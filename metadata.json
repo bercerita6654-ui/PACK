@@ -1,0 +1,6 @@
+{
+  "name": "Rekap Kiriman paket",
+  "description": "Aplikasi rekap kiriman paket ekspedisi harian (JNE, J&T, SPX, ID Xpress) dengan pencatatan cepat, grafik persentase, dan sinkronisasi Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
