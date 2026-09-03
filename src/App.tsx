@@ -81,6 +81,7 @@ export default function App() {
     action: async () => {},
   });
   const [isWorkspaceSubmitting, setIsWorkspaceSubmitting] = useState<boolean>(false);
+  const [lastPackingSyncTime, setLastPackingSyncTime] = useState<number>(0);
 
   const [appData, setAppData] = useState<AppState>(() => {
     const today = formatIndonesianDate(new Date());
@@ -242,6 +243,60 @@ export default function App() {
 
     setPackedOrders((prev) => [newOrder, ...prev]);
     return true;
+  };
+
+  // Add multiple scanned packed orders in batch
+  const handleAddPackedOrdersBatch = (
+    newItems: { orderNumber: string; platform: PlatformType }[],
+    allowDuplicates: boolean = false
+  ): { added: number; duplicates: number } => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    const existingSet = new Set(packedOrders.map((o) => o.orderNumber.toUpperCase()));
+    const batchSeen = new Set<string>();
+    const toAdd: PackedOrder[] = [];
+    let duplicates = 0;
+
+    for (let i = 0; i < newItems.length; i++) {
+      const item = newItems[i];
+      const upper = item.orderNumber.trim().toUpperCase();
+      if (!upper) continue;
+
+      const isDup = existingSet.has(upper) || batchSeen.has(upper);
+      if (isDup) {
+        duplicates++;
+        if (allowDuplicates) {
+          toAdd.push({
+            id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+            orderNumber: item.orderNumber.trim(),
+            platform: item.platform,
+            timestamp: timeStr,
+            date: appData.date,
+          });
+        }
+      } else {
+        existingSet.add(upper);
+        batchSeen.add(upper);
+        toAdd.push({
+          id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+          orderNumber: item.orderNumber.trim(),
+          platform: item.platform,
+          timestamp: timeStr,
+          date: appData.date,
+        });
+      }
+    }
+
+    if (toAdd.length > 0) {
+      setPackedOrders((prev) => [...toAdd, ...prev]);
+    }
+
+    return { added: toAdd.length, duplicates };
   };
 
   // Remove single packed order
@@ -561,6 +616,7 @@ export default function App() {
           ]);
           await appendPackingOrders(accessToken, targetSpreadsheetId, rows, targetTab);
           showToast(`${packedOrders.length} paket packing berhasil disimpan ke sheet "${targetTab}"!`, 'success');
+          setLastPackingSyncTime(Date.now());
           setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
         } catch (err: any) {
           console.error('Error saving packed orders:', err);
@@ -654,11 +710,18 @@ export default function App() {
           <PackingSection
             orders={packedOrders}
             onAddOrder={handleAddPackedOrder}
+            onAddOrdersBatch={handleAddPackedOrdersBatch}
             onRemoveOrder={handleRemovePackedOrder}
             onClearOrders={handleClearPackedOrders}
             onSyncGoogleSheet={handleSyncPackingToGoogleSheet}
             isSyncing={isWorkspaceSubmitting}
             showToast={showToast}
+            accessToken={accessToken}
+            userEmail={user?.email}
+            onLoginGoogle={handleGoogleSignIn}
+            targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
+            targetSheetTab={TARGET_PACKING_SHEET_TAB}
+            lastSyncTimestamp={lastPackingSyncTime}
           />
         )}
       </div>

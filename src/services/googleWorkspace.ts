@@ -324,3 +324,49 @@ export async function fetchSheetValues(
   const data = await res.json();
   return data.values || [];
 }
+
+/**
+ * Specifically fetch Packing Reg history from the designated spreadsheet and tab
+ */
+export async function fetchPackingRegHistory(
+  accessToken: string,
+  spreadsheetId: string,
+  targetTabName: string = 'Packing Reg'
+): Promise<{ tabName: string; rows: string[][]; headers: string[] }> {
+  try {
+    // Attempt 1: Fetch directly with targetTabName
+    const range = `'${targetTabName}'!A1:Z2000`;
+    const values = await fetchSheetValues(accessToken, spreadsheetId, range);
+    if (values && values.length > 0) {
+      const headers = (values[0] || []).map((h: any) => String(h || ''));
+      const rows = values.slice(1).map((r: any[]) => r.map((c) => String(c ?? '')));
+      return { tabName: targetTabName, headers, rows };
+    }
+  } catch (err) {
+    // If direct fetch fails, lookup the sheet list to find a matching tab
+    console.warn(`Direct fetch of ${targetTabName} failed, attempting tab resolution:`, err);
+  }
+
+  const details = await getSpreadsheetDetails(accessToken, spreadsheetId);
+  const matchedTab =
+    details.sheets.find(
+      (s) => s.title.trim().toLowerCase() === targetTabName.trim().toLowerCase()
+    )?.title ||
+    details.sheets.find(
+      (s) =>
+        s.title.toLowerCase().includes('packing reg') ||
+        s.title.toLowerCase().includes('packing') ||
+        s.title.toLowerCase().includes('paket')
+    )?.title ||
+    details.sheets[0]?.title ||
+    targetTabName;
+
+  const range = `'${matchedTab}'!A1:Z2000`;
+  const values = await fetchSheetValues(accessToken, spreadsheetId, range);
+
+  const headers = values.length > 0 ? values[0].map((h: any) => String(h || '')) : [];
+  const rows = values.length > 1 ? values.slice(1).map((r: any[]) => r.map((c) => String(c ?? ''))) : [];
+
+  return { tabName: matchedTab, headers, rows };
+}
+

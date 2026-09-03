@@ -49,6 +49,41 @@ class SoundFX {
     }
   }
 
+  // Melodic chime when batch scanning / importing multiple orders
+  playBatchSuccess() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = 'sine';
+      osc2.type = 'triangle';
+      osc1.frequency.setValueAtTime(880, now);
+      osc1.frequency.exponentialRampToValueAtTime(1760, now + 0.15);
+
+      osc2.frequency.setValueAtTime(1174, now + 0.05);
+      osc2.frequency.exponentialRampToValueAtTime(2349, now + 0.22);
+
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now + 0.05);
+      osc1.stop(now + 0.2);
+      osc2.stop(now + 0.25);
+    } catch {
+      // Ignore audio failure
+    }
+  }
+
   // Warning buzz when a barcode has already been scanned (duplicate prevention)
   playDuplicate() {
     const ctx = this.getContext();
