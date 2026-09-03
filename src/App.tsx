@@ -103,6 +103,123 @@ export default function App() {
     };
   });
 
+  // Persistent historical logs across dates
+  const [allLogs, setAllLogs] = useState<PackageLog[]>(() => {
+    const today = new Date();
+    const todayIso = today.toISOString().slice(0, 10);
+    const todayFormatted = formatIndonesianDate(today);
+
+    try {
+      const saved = localStorage.getItem('packTrack_allLogs');
+      if (saved) {
+        const parsed: PackageLog[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((l) => ({
+            ...l,
+            date: l.date || todayIso,
+            dateFormatted: l.dateFormatted || todayFormatted,
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Error loading history logs:', e);
+    }
+
+    // Check if existing appData has logs
+    try {
+      const savedApp = localStorage.getItem('packTrackData');
+      if (savedApp) {
+        const parsed = JSON.parse(savedApp);
+        if (Array.isArray(parsed?.logs) && parsed.logs.length > 0) {
+          return parsed.logs.map((l: any) => ({
+            ...l,
+            date: l.date || todayIso,
+            dateFormatted: l.dateFormatted || todayFormatted,
+          }));
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // Seed realistic sample logs for previous dates (yesterday, 2 days ago)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayIso = yesterday.toISOString().slice(0, 10);
+    const yesterdayFormatted = formatIndonesianDate(yesterday);
+
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    const twoDaysAgoIso = twoDaysAgo.toISOString().slice(0, 10);
+    const twoDaysAgoFormatted = formatIndonesianDate(twoDaysAgo);
+
+    return [
+      {
+        id: 'hist-yest-1',
+        timestamp: '16:45:10',
+        date: yesterdayIso,
+        dateFormatted: yesterdayFormatted,
+        expedition: 'JNT',
+        amount: 25,
+        method: 'pickup',
+      },
+      {
+        id: 'hist-yest-2',
+        timestamp: '15:20:00',
+        date: yesterdayIso,
+        dateFormatted: yesterdayFormatted,
+        expedition: 'SPX',
+        amount: 35,
+        method: 'pickup',
+      },
+      {
+        id: 'hist-yest-3',
+        timestamp: '14:10:25',
+        date: yesterdayIso,
+        dateFormatted: yesterdayFormatted,
+        expedition: 'JNE',
+        amount: 18,
+        method: 'drop off',
+      },
+      {
+        id: 'hist-yest-4',
+        timestamp: '11:05:40',
+        date: yesterdayIso,
+        dateFormatted: yesterdayFormatted,
+        expedition: 'IDX',
+        amount: 12,
+        method: 'pickup',
+      },
+      {
+        id: 'hist-2d-1',
+        timestamp: '17:30:15',
+        date: twoDaysAgoIso,
+        dateFormatted: twoDaysAgoFormatted,
+        expedition: 'SPX',
+        amount: 42,
+        method: 'pickup',
+      },
+      {
+        id: 'hist-2d-2',
+        timestamp: '15:15:00',
+        date: twoDaysAgoIso,
+        dateFormatted: twoDaysAgoFormatted,
+        expedition: 'JNT',
+        amount: 30,
+        method: 'drop off',
+      },
+      {
+        id: 'hist-2d-3',
+        timestamp: '13:40:22',
+        date: twoDaysAgoIso,
+        dateFormatted: twoDaysAgoFormatted,
+        expedition: 'JNE',
+        amount: 20,
+        method: 'pickup',
+      },
+    ];
+  });
+
   // State for Paket Packing scanned orders
   const [packedOrders, setPackedOrders] = useState<PackedOrder[]>(() => {
     try {
@@ -223,6 +340,15 @@ export default function App() {
       console.error('Error saving packed orders:', e);
     }
   }, [packedOrders]);
+
+  // Sync allLogs to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('packTrack_allLogs', JSON.stringify(allLogs));
+    } catch (e) {
+      console.error('Error saving all logs:', e);
+    }
+  }, [allLogs]);
 
   // Add scanned packed order
   const handleAddPackedOrder = (orderNumber: string, platform: PlatformType): boolean => {
@@ -345,15 +471,20 @@ export default function App() {
       hour: '2-digit',
       minute: '2-digit',
     });
+    const todayIso = now.toISOString().slice(0, 10);
+    const dateFormatted = formatIndonesianDate(now);
 
     const newLog: PackageLog = {
       id: Date.now().toString(),
       timestamp: timeStr,
+      date: todayIso,
+      dateFormatted,
       expedition,
       amount: finalAmount,
       method,
     };
 
+    setAllLogs((prev) => [newLog, ...prev]);
     setAppData((prev) => ({
       ...prev,
       counts: {
@@ -389,15 +520,20 @@ export default function App() {
       hour: '2-digit',
       minute: '2-digit',
     });
+    const todayIso = now.toISOString().slice(0, 10);
+    const dateFormatted = formatIndonesianDate(now);
 
     const newLog: PackageLog = {
       id: Date.now().toString(),
       timestamp: timeStr,
+      date: todayIso,
+      dateFormatted,
       expedition,
       amount: -actualDeduction,
       method,
     };
 
+    setAllLogs((prev) => [newLog, ...prev]);
     setAppData((prev) => ({
       ...prev,
       counts: {
@@ -414,23 +550,30 @@ export default function App() {
 
   // Remove specific log (Undo)
   const handleRemoveLog = (logId: string) => {
-    const logToRemove = appData.logs.find((l) => l.id === logId);
+    const logToRemove = allLogs.find((l) => l.id === logId) || appData.logs.find((l) => l.id === logId);
     if (!logToRemove) return;
 
-    setAppData((prev) => {
-      const expCode = logToRemove.expedition;
-      const curCount = prev.counts[expCode] || 0;
-      const newCount = Math.max(0, curCount - logToRemove.amount);
+    setAllLogs((prev) => prev.filter((l) => l.id !== logId));
 
-      return {
-        ...prev,
-        counts: {
-          ...prev.counts,
-          [expCode]: newCount,
-        },
-        logs: prev.logs.filter((l) => l.id !== logId),
-      };
-    });
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const isToday = !logToRemove.date || logToRemove.date === todayIso;
+
+    if (isToday) {
+      setAppData((prev) => {
+        const expCode = logToRemove.expedition;
+        const curCount = prev.counts[expCode] || 0;
+        const newCount = Math.max(0, curCount - logToRemove.amount);
+
+        return {
+          ...prev,
+          counts: {
+            ...prev.counts,
+            [expCode]: newCount,
+          },
+          logs: prev.logs.filter((l) => l.id !== logId),
+        };
+      });
+    }
 
     const expName = EXPEDITIONS[logToRemove.expedition]?.name || logToRemove.expedition;
     if (logToRemove.amount < 0) {
@@ -443,13 +586,15 @@ export default function App() {
   // Reset daily data
   const handleExecuteReset = () => {
     const today = formatIndonesianDate(new Date());
+    const todayIso = new Date().toISOString().slice(0, 10);
     setAppData({
       date: today,
       counts: { JNE: 0, JNT: 0, SPX: 0, IDX: 0 },
       logs: [],
     });
+    setAllLogs((prev) => prev.filter((l) => l.date && l.date !== todayIso));
     setIsResetModalOpen(false);
-    showToast('Data hari ini berhasil direset.', 'success');
+    showToast('Data hari ini berhasil direset. Catatan tanggal sebelumnya tetap aman tersimpan.', 'success');
   };
 
   // Sync Rekap Kiriman Paket to Google Sheet
@@ -691,12 +836,15 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-start">
               <div className="lg:col-span-2">
                 <LogTable
-                  logs={appData.logs}
+                  logs={allLogs}
+                  todayLogsCount={appData.logs.length}
+                  currentDate={appData.date}
                   isSyncing={isSyncing || isWorkspaceSubmitting}
                   onRemoveLog={handleRemoveLog}
                   onPromptReset={() => setIsResetModalOpen(true)}
                   onSyncGoogleSheet={handleSyncToGoogleSheet}
                   onOpenHistory={() => setIsHistoryModalOpen(true)}
+                  showToast={showToast}
                 />
               </div>
 

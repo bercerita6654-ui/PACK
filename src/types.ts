@@ -34,6 +34,8 @@ export interface ExpeditionConfig {
 export interface PackageLog {
   id: string;
   timestamp: string;
+  date?: string; // ISO date string e.g. "2026-09-02"
+  dateFormatted?: string; // Indonesian formatted date e.g. "Rabu, 2 September 2026"
   expedition: ExpeditionCode;
   amount: number;
   method?: DeliveryMethod;
