@@ -12,7 +12,15 @@ import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { ConfirmWorkspaceActionModal } from './components/ConfirmWorkspaceActionModal';
 import { ToastContainer } from './components/Toast';
 import { User } from 'firebase/auth';
-import { initAuth, googleSignIn, logout } from './services/googleAuth';
+import {
+  initAuth,
+  googleSignIn,
+  logout,
+  refreshGoogleToken,
+  isAuthExpiredError,
+  getCachedUserProfile,
+  getStoredAccessToken,
+} from './services/googleAuth';
 import { appendDailyRekapRow, appendPackingOrders } from './services/googleWorkspace';
 import {
   DEFAULT_GOOGLE_SHEET_WEB_APP_URL,
@@ -43,8 +51,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('packing');
 
   // Google Authentication & Workspace state
-  const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(() => getCachedUserProfile() as User | null);
+  const [accessToken, setAccessToken] = useState<string | null>(() => getStoredAccessToken());
   const [activeSpreadsheet, setActiveSpreadsheet] = useState<ActiveSpreadsheet | null>(() => {
     try {
       const saved = localStorage.getItem('packTrack_activeSpreadsheet');
@@ -280,7 +288,9 @@ export default function App() {
     const unsubscribe = initAuth(
       (currentUser, token) => {
         setUser(currentUser);
-        setAccessToken(token);
+        if (token) {
+          setAccessToken(token);
+        }
       },
       () => {
         setUser(null);
@@ -644,7 +654,8 @@ export default function App() {
         action: async () => {
           setIsWorkspaceSubmitting(true);
           try {
-            await appendDailyRekapRow(accessToken, activeSpreadsheet.id, [
+            let activeToken = accessToken;
+            const rowData = [
               appData.date,
               appData.counts.JNE,
               appData.counts.JNT,
@@ -654,7 +665,21 @@ export default function App() {
               pickupCount,
               dropOffCount,
               new Date().toLocaleTimeString('id-ID'),
-            ]);
+            ];
+
+            try {
+              await appendDailyRekapRow(activeToken!, activeSpreadsheet.id, rowData);
+            } catch (initialErr: any) {
+              if (isAuthExpiredError(initialErr)) {
+                showToast('Memperbarui token akses Google...', 'info');
+                activeToken = await refreshGoogleToken();
+                setAccessToken(activeToken);
+                await appendDailyRekapRow(activeToken, activeSpreadsheet.id, rowData);
+              } else {
+                throw initialErr;
+              }
+            }
+
             showToast('Sukses! Rekap kiriman paket berhasil disimpan ke Google Sheet.', 'success');
             setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
           } catch (err: any) {
@@ -727,7 +752,7 @@ export default function App() {
       return;
     }
 
-    if (!user || !accessToken) {
+    if (!user) {
       showToast('Silakan hubungkan akun Google Anda untuk menyimpan ke Google Sheet.', 'info');
       setIsGoogleDriveModalOpen(true);
       return;
@@ -757,6 +782,12 @@ export default function App() {
       action: async () => {
         setIsWorkspaceSubmitting(true);
         try {
+          let activeToken = accessToken;
+          if (!activeToken) {
+            activeToken = await refreshGoogleToken();
+            setAccessToken(activeToken);
+          }
+
           const rows = packedOrders.map((o, idx) => [
             idx + 1,
             o.orderNumber,
@@ -765,7 +796,20 @@ export default function App() {
             o.timestamp,
             'Selesai Packing',
           ]);
-          await appendPackingOrders(accessToken, targetSpreadsheetId, rows, targetTab);
+
+          try {
+            await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab);
+          } catch (initialErr: any) {
+            if (isAuthExpiredError(initialErr)) {
+              showToast('Memperbarui token akses Google...', 'info');
+              activeToken = await refreshGoogleToken();
+              setAccessToken(activeToken);
+              await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab);
+            } else {
+              throw initialErr;
+            }
+          }
+
           showToast(`${packedOrders.length} paket packing berhasil disimpan ke sheet "${targetTab}"!`, 'success');
           setLastPackingSyncTime(Date.now());
           setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
