@@ -74,9 +74,6 @@ export const QuickAddSection: React.FC<QuickAddSectionProps> = ({
           <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 fill-amber-500 mr-2 shrink-0" />
           <span>Input Cepat Paket</span>
         </h2>
-        <span className="text-[11px] sm:text-xs text-slate-500 font-medium">
-          Opsi Pickup & Drop Off tersedia
-        </span>
       </div>
 
       {/* Grid 2 Columns on Mobile (grid-cols-2), 4 Columns on Large Screen (lg:grid-cols-4) */}

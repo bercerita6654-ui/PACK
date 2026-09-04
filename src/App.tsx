@@ -40,7 +40,7 @@ export const TARGET_PACKING_SPREADSHEET_ID = '1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOr
 export const TARGET_PACKING_SHEET_TAB = 'Packing Reg';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('rekap');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('packing');
 
   // Google Authentication & Workspace state
   const [user, setUser] = useState<User | null>(null);
@@ -225,7 +225,13 @@ export default function App() {
     try {
       const saved = localStorage.getItem('packTrack_packedOrders');
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item: PackedOrder) => ({
+            ...item,
+            orderNumber: (item.orderNumber || '').trim().toUpperCase(),
+          }));
+        }
       }
     } catch (e) {
       console.error('Error loading packed orders:', e);
@@ -361,7 +367,7 @@ export default function App() {
 
     const newOrder: PackedOrder = {
       id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      orderNumber,
+      orderNumber: orderNumber.trim().toUpperCase(),
       platform,
       timestamp: timeStr,
       date: appData.date,
@@ -399,7 +405,7 @@ export default function App() {
         if (allowDuplicates) {
           toAdd.push({
             id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
-            orderNumber: item.orderNumber.trim(),
+            orderNumber: upper,
             platform: item.platform,
             timestamp: timeStr,
             date: appData.date,
@@ -410,7 +416,7 @@ export default function App() {
         batchSeen.add(upper);
         toAdd.push({
           id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
-          orderNumber: item.orderNumber.trim(),
+          orderNumber: upper,
           platform: item.platform,
           timestamp: timeStr,
           date: appData.date,

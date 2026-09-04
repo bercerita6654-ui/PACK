@@ -166,20 +166,20 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Menu Navigation Tabs */}
-      <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 bg-slate-100/80 p-1 rounded-xl">
+      <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
           <button
             type="button"
             id="nav-tab-rekap"
             onClick={() => onTabChange('rekap')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-lg font-bold text-xs sm:text-sm transition-all ${
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all ${
               activeTab === 'rekap'
-                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Truck className="w-4 h-4" />
-            <span>Rekap Kiriman Paket</span>
+            <span>Rekap Kiriman</span>
             <span
               className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
                 activeTab === 'rekap'
@@ -195,9 +195,9 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             id="nav-tab-packing"
             onClick={() => onTabChange('packing')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-lg font-bold text-xs sm:text-sm transition-all ${
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all ${
               activeTab === 'packing'
-                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -213,13 +213,6 @@ export const Header: React.FC<HeaderProps> = ({
               {packingCount}
             </span>
           </button>
-        </div>
-
-        <div className="text-xs text-slate-400 hidden sm:block">
-          Mode:{' '}
-          <strong className="text-slate-600">
-            {activeTab === 'rekap' ? 'Pencatatan Ekspedisi Harian' : 'Pemindaian Barcode Paket Siap Kirim'}
-          </strong>
         </div>
       </div>
     </header>

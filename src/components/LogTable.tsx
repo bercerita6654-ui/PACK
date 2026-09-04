@@ -302,43 +302,53 @@ export const LogTable: React.FC<LogTableProps> = ({
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-full">
-      {/* Header bar with actions */}
-      <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/70 flex flex-wrap gap-3 justify-between items-center">
-        <div className="flex items-center gap-2">
-          <div className="p-2 bg-white border border-slate-200 rounded-xl text-indigo-600 shadow-2xs">
+      {/* Header bar with actions (Clean & Spacious) */}
+      <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
             <Clock className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-slate-800 text-base">Riwayat Input & Log Rekap</h3>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                {metrics.count} Catatan
+              <h3 className="font-bold text-slate-900 text-base">Riwayat Catatan</h3>
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {metrics.count} Transaksi
               </span>
             </div>
-            <span className="text-xs text-slate-500 font-medium">
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
               {activeDateLabel}
-            </span>
+            </p>
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Action buttons (Clean, no clutter) */}
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           <button
             id="btn-prompt-reset"
             onClick={onPromptReset}
-            className="bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors shadow-2xs flex items-center gap-1.5"
-            title="Reset hitungan harian hari ini"
+            className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
+            title="Reset hitungan hari ini"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-            <span>Reset Harian</span>
+            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <span>Reset</span>
+          </button>
+
+          <button
+            id="btn-open-server"
+            onClick={onOpenHistory}
+            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+            title="Lihat riwayat data tersimpan di Google Sheet"
+          >
+            <Server className="w-3.5 h-3.5" />
+            <span>Data Tersimpan</span>
           </button>
 
           <button
             id="btn-sync"
             disabled={isSyncing}
             onClick={onSyncGoogleSheet}
-            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-75 disabled:cursor-not-allowed text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5"
-            title="Kirim total data paket hari ini ke Google Sheet"
+            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-75 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+            title="Kirim total data paket ke Google Sheet"
           >
             {isSyncing ? (
               <>
@@ -352,129 +362,68 @@ export const LogTable: React.FC<LogTableProps> = ({
               </>
             )}
           </button>
-
-          <button
-            id="btn-open-server"
-            onClick={onOpenHistory}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors shadow-sm flex items-center gap-1.5"
-            title="Lihat riwayat data tersimpan di Google Sheet"
-          >
-            <Server className="w-3.5 h-3.5" />
-            <span>Lihat Data Tersimpan</span>
-          </button>
         </div>
       </div>
 
-      {/* Dedicated Date Filter Toolbar */}
-      <div className="p-3 bg-slate-50/90 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 text-xs font-bold text-slate-700 mr-1">
-            <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Filter Tanggal:</span>
+      {/* Unified Compact Filter Bar (Replaces 3 stacked toolbars) */}
+      <div className="p-3 bg-white border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs">
+        {/* Date presets + calendar */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => {
+                setDatePreset('today');
+                setCustomDate('');
+              }}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                datePreset === 'today'
+                  ? 'bg-white text-indigo-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Hari Ini ({todayCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDatePreset('yesterday');
+                setCustomDate('');
+              }}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                datePreset === 'yesterday'
+                  ? 'bg-white text-indigo-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Kemarin ({yesterdayCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDatePreset('all');
+                setCustomDate('');
+              }}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                datePreset === 'all'
+                  ? 'bg-white text-indigo-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Semua ({logs.length})
+            </button>
           </div>
 
-          {/* Preset Buttons */}
-          <button
-            type="button"
-            onClick={() => {
-              setDatePreset('today');
-              setCustomDate('');
-            }}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs ${
-              datePreset === 'today'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <span>Hari Ini</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                datePreset === 'today' ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              {todayCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setDatePreset('yesterday');
-              setCustomDate('');
-            }}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs ${
-              datePreset === 'yesterday'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <span>Kemarin</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                datePreset === 'yesterday' ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              {yesterdayCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setDatePreset('7days');
-              setCustomDate('');
-            }}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs ${
-              datePreset === '7days'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <span>7 Hari Terakhir</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                datePreset === '7days' ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              {sevenDaysCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setDatePreset('all');
-              setCustomDate('');
-            }}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs ${
-              datePreset === 'all'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <span>Semua Tanggal</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                datePreset === 'all' ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              {logs.length}
-            </span>
-          </button>
-        </div>
-
-        {/* Date Picker Input */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
+          {/* Date Picker Input */}
+          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
             <CalendarDays className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="text-[11px] font-semibold text-slate-500 shrink-0">Pilih Tanggal:</span>
             <input
               type="date"
               id="input-filter-date"
               value={customDate}
               onChange={handleCustomDateChange}
               max={todayIso}
-              className="bg-transparent text-slate-800 font-bold focus:outline-none text-xs cursor-pointer"
+              className="bg-transparent text-slate-700 font-medium focus:outline-none text-xs cursor-pointer"
             />
             {customDate && (
               <button
@@ -483,132 +432,54 @@ export const LogTable: React.FC<LogTableProps> = ({
                   setCustomDate('');
                   setDatePreset('today');
                 }}
-                className="text-slate-400 hover:text-slate-700 p-0.5 rounded-full"
-                title="Hapus filter tanggal kalender"
+                className="text-slate-400 hover:text-slate-700 p-0.5"
+                title="Hapus tanggal custom"
               >
                 <X className="w-3 h-3" />
               </button>
             )}
           </div>
+        </div>
 
-          {/* Quick Copy & CSV buttons for filtered logs */}
-          <button
-            type="button"
-            onClick={handleCopyFilteredSummary}
-            disabled={filteredLogs.length === 0}
-            className="p-1.5 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold transition-colors disabled:opacity-40"
-            title="Salin ringkasan data tanggal ini"
+        {/* Courier Filter Dropdown, Method Dropdown & Search Input */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Ekspedisi Dropdown */}
+          <select
+            value={filterExpedition}
+            onChange={(e) => setFilterExpedition(e.target.value)}
+            className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
           >
-            <Copy className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadFilteredCSV}
-            disabled={filteredLogs.length === 0}
-            className="p-1.5 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold transition-colors disabled:opacity-40"
-            title="Unduh CSV catatan pada tanggal ini"
+            <option value="ALL">Semua Ekspedisi</option>
+            {EXPEDITION_KEYS.map((k) => (
+              <option key={k} value={k}>
+                {EXPEDITIONS[k].name}
+              </option>
+            ))}
+          </select>
+
+          {/* Metode Dropdown */}
+          <select
+            value={filterMethod}
+            onChange={(e) => setFilterMethod(e.target.value as any)}
+            className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5" />
-          </button>
+            <option value="ALL">Semua Metode</option>
+            <option value="pickup">Pickup</option>
+            <option value="drop off">Drop Off</option>
+          </select>
+
+          {/* Search Box */}
+          <div className="relative w-32 sm:w-40">
+            <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari..."
+              className="w-full pl-7 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
         </div>
-      </div>
-
-      {/* Sub-Filter Bar (Expedition, Method, and Search) */}
-      <div className="px-4 py-2 bg-white border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
-          <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <button
-            onClick={() => setFilterExpedition('ALL')}
-            className={`px-2 py-1 rounded-lg font-bold transition-colors ${
-              filterExpedition === 'ALL'
-                ? 'bg-slate-800 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Semua Ekspedisi
-          </button>
-          {EXPEDITION_KEYS.map((key) => {
-            const exp = EXPEDITIONS[key];
-            const count = filteredLogs.filter((l) => l.expedition === key).length;
-            const isSelected = filterExpedition === key;
-
-            return (
-              <button
-                key={key}
-                onClick={() => setFilterExpedition(key)}
-                className={`px-2 py-1 rounded-lg font-bold transition-colors flex items-center gap-1 ${
-                  isSelected ? 'text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                style={
-                  isSelected
-                    ? { backgroundColor: exp.colorHex }
-                    : { color: exp.colorHex }
-                }
-              >
-                <span>{exp.name}</span>
-                {count > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/10">
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-
-          <span className="text-slate-300 mx-1">|</span>
-
-          {/* Delivery Method Filter */}
-          {(['ALL', 'pickup', 'drop off'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setFilterMethod(m)}
-              className={`px-2 py-1 rounded-lg font-bold capitalize transition-colors ${
-                filterMethod === m
-                  ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
-                  : 'text-slate-500 hover:bg-slate-100'
-              }`}
-            >
-              {m === 'ALL' ? 'Semua Metode' : m}
-            </button>
-          ))}
-        </div>
-
-        {/* Search Input */}
-        <div className="relative w-full sm:w-48">
-          <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari jam / ekspedisi..."
-            className="w-full pl-7 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-      </div>
-
-      {/* Filter Summary Metric Strip */}
-      <div className="px-4 py-2 bg-slate-50/60 border-b border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="font-semibold text-slate-700">
-            Total Terfilter: <strong className="text-indigo-600">{metrics.totalPcs} Pcs</strong> ({metrics.count} catatan)
-          </span>
-          <span className="inline-flex items-center gap-1 text-slate-500">
-            <Truck className="w-3 h-3 text-indigo-500" />
-            <span>Pickup: <strong>{metrics.pickupPcs} Pcs</strong></span>
-          </span>
-          <span className="inline-flex items-center gap-1 text-slate-500">
-            <Store className="w-3 h-3 text-amber-500" />
-            <span>Drop Off: <strong>{metrics.dropOffPcs} Pcs</strong></span>
-          </span>
-        </div>
-
-        {datePreset !== 'today' && (
-          <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            <span>Melihat Histori: {activeDateLabel}</span>
-          </span>
-        )}
       </div>
 
       {/* Table & Body */}
@@ -760,14 +631,48 @@ export const LogTable: React.FC<LogTableProps> = ({
         )}
       </div>
 
-      {/* Footer Info */}
-      <div className="p-3 bg-slate-50 border-t border-slate-100 text-slate-500 text-[11px] flex flex-col sm:flex-row items-center justify-between gap-2 font-medium">
-        <span>
-          Menampilkan <strong>{filteredLogs.length}</strong> catatan | Total <strong>{metrics.totalPcs} Pcs</strong>
-        </span>
-        <span className="text-slate-400">
-          Gunakan filter tanggal di atas untuk memeriksa log transaksi hari sebelumnya
-        </span>
+      {/* Footer Info & Quick Export */}
+      <div className="p-3 bg-slate-50 border-t border-slate-100 text-slate-600 text-xs flex flex-col sm:flex-row items-center justify-between gap-2 font-medium">
+        <div className="flex flex-wrap items-center gap-2">
+          <span>
+            Total: <strong className="text-indigo-700 font-bold">{metrics.totalPcs} Pcs</strong>
+          </span>
+          <span className="text-slate-300">•</span>
+          <span className="text-slate-500">
+            Pickup: <strong>{metrics.pickupPcs}</strong>
+          </span>
+          <span className="text-slate-300">•</span>
+          <span className="text-slate-500">
+            Drop Off: <strong>{metrics.dropOffPcs}</strong>
+          </span>
+          <span className="text-slate-300">•</span>
+          <span className="text-slate-400 text-[11px]">
+            ({filteredLogs.length} catatan)
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleCopyFilteredSummary}
+            disabled={filteredLogs.length === 0}
+            className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 flex items-center gap-1"
+            title="Salin ringkasan data tanggal ini"
+          >
+            <Copy className="w-3 h-3 text-slate-400" />
+            <span>Salin Rekap</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadFilteredCSV}
+            disabled={filteredLogs.length === 0}
+            className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 flex items-center gap-1"
+            title="Unduh CSV catatan pada tanggal ini"
+          >
+            <Download className="w-3 h-3 text-slate-400" />
+            <span>CSV</span>
+          </button>
+        </div>
       </div>
     </div>
   );

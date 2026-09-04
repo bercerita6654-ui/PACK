@@ -81,7 +81,7 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
         }
 
         const no = r[0] || String(idx + 1);
-        const orderNumber = r[1] ? r[1].trim() : '';
+        const orderNumber = r[1] ? r[1].trim().toUpperCase() : '';
         const rawPlatform = r[2] ? r[2].trim() : '';
         const date = r[3] ? r[3].trim() : '-';
         const timestamp = r[4] ? r[4].trim() : '-';
@@ -348,9 +348,9 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
                 placeholder="Cari no pesanan / tgl..."
-                className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 focus:border-emerald-500 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 focus:border-emerald-500 rounded-xl text-xs font-medium text-slate-800 uppercase placeholder:normal-case placeholder:text-slate-400 focus:outline-none"
               />
             </div>
 
@@ -458,7 +458,7 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
                     <td className="p-3 text-center text-slate-400 font-mono text-[11px]">
                       {idx + 1}
                     </td>
-                    <td className="p-3 font-mono font-bold text-slate-900 tracking-wide">
+                    <td className="p-3 font-mono font-bold uppercase text-slate-900 tracking-wide">
                       {row.orderNumber}
                     </td>
                     <td className="p-3">

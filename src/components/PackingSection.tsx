@@ -116,7 +116,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
 
   // Handle Single Scan Submit
   const handleProcessScan = (rawCode?: string) => {
-    const code = (rawCode !== undefined ? rawCode : scanInput).trim();
+    const code = (rawCode !== undefined ? rawCode : scanInput).trim().toUpperCase();
     if (!code) {
       showToast('Masukkan atau scan No. Pesanan terlebih dahulu.', 'warning');
       return;
@@ -124,7 +124,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
 
     // Check duplicate against existing orders
     const existing = orders.find(
-      (o) => o.orderNumber.toUpperCase() === code.toUpperCase()
+      (o) => o.orderNumber.toUpperCase() === code
     );
 
     const nowStr = new Date().toLocaleTimeString('id-ID', {
@@ -193,7 +193,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
   // If user chooses to add anyway despite duplicate
   const handleForceAddDuplicate = () => {
     if (!duplicateWarning) return;
-    const code = duplicateWarning.orderNumber;
+    const code = duplicateWarning.orderNumber.trim().toUpperCase();
     const platform = detectPlatform(code);
     onAddOrder(code, platform);
     soundFX.playSuccess();
@@ -214,7 +214,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
   };
 
   // Platform live preview based on what's typed
-  const previewPlatform = scanInput.trim() ? detectPlatform(scanInput) : null;
+  const previewPlatform = scanInput.trim() ? detectPlatform(scanInput.toUpperCase()) : null;
   const previewColor = previewPlatform ? getPlatformColor(previewPlatform) : null;
 
   // Stats calculation
@@ -240,18 +240,18 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
 
     for (const token of tokens) {
       // Remove surrounding quotes or clean up barcode prefixes if any
-      const cleaned = token.replace(/^[",'\s]+|[",'\s]+$/g, '').trim();
+      const cleaned = token.replace(/^[",'\s]+|[",'\s]+$/g, '').trim().toUpperCase();
       if (!cleaned) continue;
 
-      const upper = cleaned.toUpperCase();
+      const upper = cleaned;
       const isExistingDuplicate = existingMap.has(upper);
       const isInternalDuplicate = seenInThisBatch.has(upper);
 
       seenInThisBatch.add(upper);
 
       result.push({
-        orderNumber: cleaned,
-        platform: detectPlatform(cleaned),
+        orderNumber: upper,
+        platform: detectPlatform(upper),
         isExistingDuplicate,
         isInternalDuplicate,
       });
@@ -353,7 +353,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     reader.onload = (event) => {
       const content = event.target?.result as string;
       if (content) {
-        setBatchText((prev) => (prev ? prev + '\n' + content : content));
+        setBatchText((prev) => (prev ? prev + '\n' + content.toUpperCase() : content.toUpperCase()));
         showToast(`File "${file.name}" berhasil dimuat.`, 'success');
       }
     };
@@ -369,7 +369,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     if (!batchText.trim()) return;
     const items = batchText
       .split(/[\r\n,;\t\s]+/)
-      .map((s) => s.trim())
+      .map((s) => s.trim().toUpperCase())
       .filter(Boolean);
     setBatchText(items.join('\n'));
     showToast(`${items.length} nomor pesanan dirapikan per baris.`, 'success');
@@ -580,10 +580,10 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                   id="scanner-input"
                   type="text"
                   value={scanInput}
-                  onChange={(e) => setScanInput(e.target.value)}
+                  onChange={(e) => setScanInput(e.target.value.toUpperCase())}
                   onKeyDown={handleKeyDown}
                   placeholder="Scan barcode atau ketik no. pesanan..."
-                  className="w-full pl-11 pr-28 py-3 bg-slate-50 border-2 border-slate-300 focus:border-indigo-600 focus:bg-white rounded-xl text-base sm:text-lg font-mono font-bold text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 placeholder:text-sm focus:outline-none transition-colors"
+                  className="w-full pl-11 pr-28 py-3 bg-slate-50 border-2 border-slate-300 focus:border-indigo-600 focus:bg-white rounded-xl text-base sm:text-lg font-mono font-bold uppercase text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 placeholder:text-sm focus:outline-none transition-colors"
                   autoComplete="off"
                   spellCheck="false"
                 />
@@ -756,9 +756,9 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                 id="batch-scan-textarea"
                 rows={5}
                 value={batchText}
-                onChange={(e) => setBatchText(e.target.value)}
+                onChange={(e) => setBatchText(e.target.value.toUpperCase())}
                 placeholder="Tempel daftar no. pesanan di sini (dari Excel, Word, Notepad, dll)..."
-                className="w-full p-3 bg-slate-50 border-2 border-slate-300 focus:border-indigo-600 focus:bg-white rounded-xl text-xs sm:text-sm font-mono text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:outline-none transition-colors"
+                className="w-full p-3 bg-slate-50 border-2 border-slate-300 focus:border-indigo-600 focus:bg-white rounded-xl text-xs sm:text-sm font-mono uppercase text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:outline-none transition-colors"
                 spellCheck="false"
               />
               {batchText && (
@@ -926,9 +926,9 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
                 placeholder="Cari No. Pesanan..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl uppercase placeholder:normal-case focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               {searchQuery && (
                 <button
@@ -1044,7 +1044,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                       <td className="p-3 text-center text-xs font-semibold text-slate-400">
                         {filteredOrders.length - idx}
                       </td>
-                      <td className="p-3 font-mono font-bold text-slate-900 text-sm sm:text-base">
+                      <td className="p-3 font-mono font-bold uppercase text-slate-900 text-sm sm:text-base">
                         <div className="flex items-center gap-2">
                           <span>{order.orderNumber}</span>
                           <button
