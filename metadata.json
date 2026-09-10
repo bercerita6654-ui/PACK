@@ -1,5 +1,5 @@
 {
-  "name": "Rekap Kiriman paket",
+  "name": "Rekap Kiriman Reguler",
   "description": "Aplikasi rekap kiriman paket ekspedisi harian, scan paket packing, dan monitoring scan nota diproses untuk verifikasi status packing dengan sinkronisasi Google Sheets.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

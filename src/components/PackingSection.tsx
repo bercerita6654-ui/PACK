@@ -533,7 +533,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg sm:text-xl font-bold text-slate-900">
-                Paket Packing
+                Scan Nota (Sudah Packing)
               </h2>
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />

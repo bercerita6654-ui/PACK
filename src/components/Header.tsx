@@ -65,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
-                Rekap Kiriman paket
+                Rekap Kiriman Reguler
               </h1>
               <div className="flex items-center gap-2 text-slate-500 text-sm mt-0.5">
                 <Calendar className="w-4 h-4 text-slate-400" />
@@ -150,39 +150,16 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
           <button
             type="button"
-            id="nav-tab-packing"
-            onClick={() => onTabChange('packing')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
-              activeTab === 'packing'
-                ? 'bg-white text-indigo-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ScanBarcode className="w-4 h-4" />
-            <span>Paket Packing</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
-                activeTab === 'packing'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-slate-200/70 text-slate-600'
-              }`}
-            >
-              {packingCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
             id="nav-tab-nota"
             onClick={() => onTabChange('nota')}
             className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
               activeTab === 'nota'
-                ? 'bg-white text-amber-900 shadow-xs'
+                ? 'bg-white text-amber-900 shadow-xs ring-1 ring-amber-200/80'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <FileText className="w-4 h-4 text-amber-600" />
-            <span>Nota Diproses</span>
+            <span>Scan Nota (Belum Packing)</span>
             <span
               className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
                 delayedNotaCount > 0
@@ -210,6 +187,29 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             type="button"
+            id="nav-tab-packing"
+            onClick={() => onTabChange('packing')}
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+              activeTab === 'packing'
+                ? 'bg-white text-emerald-800 shadow-xs ring-1 ring-emerald-200/80'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ScanBarcode className="w-4 h-4 text-emerald-600" />
+            <span>Scan Nota (Sudah Packing)</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                activeTab === 'packing'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-slate-200/70 text-slate-600'
+              }`}
+            >
+              {packingCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
             id="nav-tab-rekap"
             onClick={() => onTabChange('rekap')}
             className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
@@ -218,8 +218,8 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Truck className="w-4 h-4" />
-            <span>Rekap Kiriman</span>
+            <Truck className="w-4 h-4 text-indigo-600" />
+            <span>Rekap Kiriman Reguler</span>
             <span
               className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
                 activeTab === 'rekap'

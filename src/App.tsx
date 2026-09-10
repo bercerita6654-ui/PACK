@@ -59,7 +59,7 @@ export const TARGET_PACKING_SHEET_TAB = 'Packing Reg';
 export const TARGET_NOTA_SHEET_TAB = 'Nota Diproses';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('packing');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('nota');
 
   // Google Authentication & Workspace state
   const [user, setUser] = useState<User | null>(() => getCachedUserProfile() as User | null);

@@ -83,7 +83,7 @@ export function generateWhatsAppSummary(appData: AppState): string {
 📊 *TOTAL PAKET:* ${total} paket
 🚚 *Pickup:* ${totalPickup} paket | 🏪 *Drop Off:* ${totalDropOff} paket
 
-_Dibuat otomatis dari aplikasi Rekap Kiriman paket_`;
+_Dibuat otomatis dari aplikasi Rekap Kiriman Reguler_`;
 }
 
 export function exportDailyCSV(appData: AppState) {

@@ -814,7 +814,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                  Scan Nota Diproses (Admin)
+                  Scan Nota (Belum Packing)
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
                   Tahap 1 Admin
@@ -848,9 +848,9 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             <button
               type="button"
               onClick={onNavigateToPacking}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-bold transition-all"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 text-xs font-bold transition-all"
             >
-              <span>Buka Menu Packing</span>
+              <span>Scan Nota (Sudah Packing)</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           )}
