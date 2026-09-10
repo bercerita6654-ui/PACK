@@ -32,6 +32,8 @@ import {
   DEFAULT_DELAY_THRESHOLD_MINUTES,
   evaluateNotaPackedStatus,
   isDateToday,
+  isDateThisWeek,
+  isDateThisMonth,
   normalizeOrderNumber,
 } from '../utils/notaDelay';
 
@@ -57,6 +59,8 @@ export interface ProcessedNotaSheetHistoryProps {
   resolvedTabName?: string;
   selectedStatusFilter?: 'all' | 'pending' | 'overdue' | 'packed';
   onStatusFilterChange?: (filter: 'all' | 'pending' | 'overdue' | 'packed') => void;
+  selectedTimeframe?: 'today' | 'week' | 'month' | 'all';
+  onTimeframeChange?: (timeframe: 'today' | 'week' | 'month' | 'all') => void;
   packedOrders?: PackedOrder[];
   localNotas?: ProcessedNota[];
 }
@@ -95,6 +99,8 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
   resolvedTabName: externalResolvedTabName,
   selectedStatusFilter,
   onStatusFilterChange,
+  selectedTimeframe,
+  onTimeframeChange,
   packedOrders = [],
   localNotas = [],
 }) => {
@@ -144,13 +150,21 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<'Semua' | 'Shopee' | 'Tokopedia/TikTok'>('Semua');
   const [internalStatusFilter, setInternalStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
-  const [filterTodayOnly, setFilterTodayOnly] = useState<boolean>(false);
+  const [internalTimeframe, setInternalTimeframe] = useState<'today' | 'week' | 'month' | 'all'>('today');
 
   const statusFilter = selectedStatusFilter !== undefined ? selectedStatusFilter : internalStatusFilter;
   const setStatusFilter = (val: 'all' | 'pending' | 'overdue' | 'packed') => {
     setInternalStatusFilter(val);
     if (onStatusFilterChange) {
       onStatusFilterChange(val);
+    }
+  };
+
+  const timeframe = selectedTimeframe !== undefined ? selectedTimeframe : internalTimeframe;
+  const setTimeframe = (val: 'today' | 'week' | 'month' | 'all') => {
+    setInternalTimeframe(val);
+    if (onTimeframeChange) {
+      onTimeframeChange(val);
     }
   };
 
@@ -372,28 +386,30 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     [sheetRows]
   );
 
-  // Today's statistics in Google Sheet (Tab 'Nota Diproses')
-  const todayStats = useMemo(() => {
-    const todayRows = sheetRows.filter((r) =>
-      isDateToday(r.adminDate, r.adminTime)
-    );
+  // Timeframe statistics in Google Sheet (Tab 'Nota Diproses')
+  const periodStats = useMemo(() => {
+    let effectiveRows = sheetRows;
+    if (timeframe === 'today') {
+      effectiveRows = sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime));
+    } else if (timeframe === 'week') {
+      effectiveRows = sheetRows.filter((r) => isDateThisWeek(r.adminDate, r.adminTime));
+    } else if (timeframe === 'month') {
+      effectiveRows = sheetRows.filter((r) => isDateThisMonth(r.adminDate, r.adminTime));
+    }
 
-    // Fallback: If no rows explicitly matched date parsing, but sheet has rows, fallback gracefully
-    const effectiveTodayRows = todayRows.length > 0 ? todayRows : sheetRows;
-
-    const totalToday = effectiveTodayRows.length;
-    const packedToday = effectiveTodayRows.filter((r) => r.isPacked).length;
-    const pendingToday = totalToday - packedToday;
-    const percentToday =
-      totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
+    const totalPeriod = effectiveRows.length;
+    const packedPeriod = effectiveRows.filter((r) => r.isPacked).length;
+    const pendingPeriod = totalPeriod - packedPeriod;
+    const percentPeriod =
+      totalPeriod > 0 ? Math.round((packedPeriod / totalPeriod) * 100) : 0;
 
     return {
-      totalToday,
-      packedToday,
-      pendingToday,
-      percentToday,
+      totalPeriod,
+      packedPeriod,
+      pendingPeriod,
+      percentPeriod,
     };
-  }, [sheetRows]);
+  }, [sheetRows, timeframe]);
 
   // Filter and sort
   const filteredAndSortedRows = useMemo(() => {
@@ -411,8 +427,12 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
         return elapsed >= effectiveThreshold;
       })();
 
-      const matchToday =
-        !filterTodayOnly || isDateToday(row.adminDate, row.adminTime);
+      const matchTimeframe = (() => {
+        if (timeframe === 'today') return isDateToday(row.adminDate, row.adminTime);
+        if (timeframe === 'week') return isDateThisWeek(row.adminDate, row.adminTime);
+        if (timeframe === 'month') return isDateThisMonth(row.adminDate, row.adminTime);
+        return true;
+      })();
 
       const matchStatus =
         statusFilter === 'all' ||
@@ -425,7 +445,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
         row.adminDate.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
         row.adminTime.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
         row.notes.toLowerCase().includes(searchQuery.toLowerCase().trim());
-      return matchPlatform && matchStatus && matchSearch && matchToday;
+      return matchPlatform && matchStatus && matchSearch && matchTimeframe;
     });
 
     if (sortDescending) {
@@ -440,7 +460,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     searchQuery,
     sortDescending,
     effectiveThreshold,
-    filterTodayOnly,
+    timeframe,
   ]);
 
   // Copy single order
@@ -694,7 +714,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
       )}
 
       {/* ========================================================================= */}
-      {/* RINGKASAN STATISTIK KECIL DI ATAS TABEL NOTA DIPROSES (HARI INI)           */}
+      {/* RINGKASAN STATISTIK KECIL DI ATAS TABEL NOTA DIPROSES                      */}
       {/* ========================================================================= */}
       <div
         id="mini-stats-today-sheet"
@@ -707,7 +727,13 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
             </div>
             <div>
               <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                Status Kerja Hari Ini
+                {timeframe === 'today'
+                  ? 'Status Kerja Harian (Hari Ini)'
+                  : timeframe === 'week'
+                  ? 'Status Kerja Mingguan (Minggu Ini)'
+                  : timeframe === 'month'
+                  ? 'Status Kerja Bulanan (Bulan Ini)'
+                  : 'Status Kerja (Semua Riwayat Data)'}
               </span>
               <span className="text-xs text-slate-500 ml-1.5 font-medium hidden sm:inline">
                 ({new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })})
@@ -715,40 +741,66 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
             </div>
           </div>
 
-          <button
-            type="button"
-            id="btn-filter-today-sheet"
-            onClick={() => setFilterTodayOnly(!filterTodayOnly)}
-            className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-              filterTodayOnly
-                ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-300'
-                : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300/80 shadow-2xs'
-            }`}
-            title="Klik untuk menyaring hanya nota tanggal hari ini di tabel"
-          >
-            <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-            <span>{filterTodayOnly ? 'Tampilkan Semua Tanggal' : 'Filter Tabel: Hanya Hari Ini'}</span>
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                filterTodayOnly ? 'bg-indigo-700 text-white' : 'bg-indigo-100 text-indigo-800'
+          <div className="inline-flex bg-slate-200/80 p-0.5 rounded-xl text-xs font-bold">
+            <button
+              type="button"
+              id="btn-sheet-history-timeframe-today"
+              onClick={() => setTimeframe('today')}
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                timeframe === 'today'
+                  ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {todayStats.totalToday}
-            </span>
-          </button>
+              Harian
+            </button>
+            <button
+              type="button"
+              id="btn-sheet-history-timeframe-week"
+              onClick={() => setTimeframe('week')}
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                timeframe === 'week'
+                  ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Mingguan
+            </button>
+            <button
+              type="button"
+              id="btn-sheet-history-timeframe-month"
+              onClick={() => setTimeframe('month')}
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                timeframe === 'month'
+                  ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Bulanan
+            </button>
+            <button
+              type="button"
+              id="btn-sheet-history-timeframe-all"
+              onClick={() => setTimeframe('all')}
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                timeframe === 'all'
+                  ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Semua
+            </button>
+          </div>
         </div>
 
         {/* 3 Mini Stat Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
-          {/* Card 1: Total Nota Hari Ini */}
+          {/* Card 1: Total Nota Periode */}
           <div
             id="mini-card-today-total"
-            onClick={() => {
-              setFilterTodayOnly(true);
-              setStatusFilter('all');
-            }}
+            onClick={() => setStatusFilter('all')}
             className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-2xs hover:border-indigo-300 hover:shadow-xs transition-all cursor-pointer group flex items-center justify-between"
-            title="Klik untuk memfilter semua nota hari ini"
+            title="Klik untuk memfilter semua nota pada periode aktif"
           >
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg shrink-0">
@@ -756,11 +808,19 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
               </div>
               <div>
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Total Nota Hari Ini
+                  Total Nota (
+                  {timeframe === 'today'
+                    ? 'Hari Ini'
+                    : timeframe === 'week'
+                    ? 'Minggu Ini'
+                    : timeframe === 'month'
+                    ? 'Bulan Ini'
+                    : 'Semua'}
+                  )
                 </span>
                 <div className="flex items-baseline gap-1.5 mt-0.5">
                   <span className="text-xl font-black text-slate-900 leading-tight">
-                    {todayStats.totalToday}
+                    {periodStats.totalPeriod}
                   </span>
                   <span className="text-xs text-slate-500 font-semibold">Nota</span>
                 </div>
@@ -768,20 +828,17 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
             </div>
             <div className="text-right">
               <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md group-hover:bg-indigo-100 transition-colors">
-                {filterTodayOnly ? 'Aktif' : 'Lihat →'}
+                Lihat →
               </span>
             </div>
           </div>
 
-          {/* Card 2: Sudah Selesai Hari Ini */}
+          {/* Card 2: Sudah Selesai Periode */}
           <div
             id="mini-card-today-packed"
-            onClick={() => {
-              setFilterTodayOnly(true);
-              setStatusFilter('packed');
-            }}
+            onClick={() => setStatusFilter('packed')}
             className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/90 shadow-2xs hover:border-emerald-300 hover:bg-emerald-50 transition-all cursor-pointer group flex items-center justify-between"
-            title="Klik untuk memfilter nota hari ini yang sudah selesai"
+            title="Klik untuk memfilter nota periode ini yang sudah selesai"
           >
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg shrink-0">
@@ -793,7 +850,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                 </span>
                 <div className="flex items-baseline gap-1.5 mt-0.5">
                   <span className="text-xl font-black text-emerald-800 leading-tight">
-                    {todayStats.packedToday}
+                    {periodStats.packedPeriod}
                   </span>
                   <span className="text-xs text-emerald-700 font-semibold">Nota</span>
                 </div>
@@ -801,20 +858,17 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
             </div>
             <div className="text-right">
               <span className="text-[10px] font-bold text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded-full block">
-                {todayStats.percentToday}% Selesai
+                {periodStats.percentPeriod}% Selesai
               </span>
             </div>
           </div>
 
-          {/* Card 3: Pending Hari Ini */}
+          {/* Card 3: Pending Periode */}
           <div
             id="mini-card-today-pending"
-            onClick={() => {
-              setFilterTodayOnly(true);
-              setStatusFilter('pending');
-            }}
+            onClick={() => setStatusFilter('pending')}
             className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/90 shadow-2xs hover:border-amber-300 hover:bg-amber-50 transition-all cursor-pointer group flex items-center justify-between"
-            title="Klik untuk memfilter nota hari ini yang masih pending"
+            title="Klik untuk memfilter nota periode ini yang masih pending"
           >
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-amber-100 text-amber-800 rounded-lg shrink-0">
@@ -826,7 +880,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                 </span>
                 <div className="flex items-baseline gap-1.5 mt-0.5">
                   <span className="text-xl font-black text-amber-800 leading-tight">
-                    {todayStats.pendingToday}
+                    {periodStats.pendingPeriod}
                   </span>
                   <span className="text-xs text-amber-700 font-semibold">Nota</span>
                 </div>
@@ -835,12 +889,12 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
             <div className="text-right">
               <span
                 className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                  todayStats.pendingToday > 0
+                  periodStats.pendingPeriod > 0
                     ? 'bg-amber-200 text-amber-900 animate-pulse'
                     : 'bg-slate-200 text-slate-700'
                 }`}
               >
-                {todayStats.pendingToday > 0 ? 'Menunggu' : 'Beres'}
+                {periodStats.pendingPeriod > 0 ? 'Menunggu' : 'Beres'}
               </span>
             </div>
           </div>
@@ -963,18 +1017,6 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
             >
               <Download className="w-3.5 h-3.5" />
             </button>
-
-            {onImportToActiveSession && filteredAndSortedRows.length > 0 && (
-              <button
-                type="button"
-                onClick={handleImportToActiveSession}
-                className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
-                title="Muat data nota dari sheet ini ke sesi scan aktif"
-              >
-                <Import className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Impor ke Sesi Scan</span>
-              </button>
-            )}
           </div>
         </div>
       </div>

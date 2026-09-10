@@ -39,6 +39,8 @@ import {
   parseNotaDateTime,
   evaluateNotaPackedStatus,
   isDateToday,
+  isDateThisWeek,
+  isDateThisMonth,
   normalizeOrderNumber,
 } from '../utils/notaDelay';
 import {
@@ -191,6 +193,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const [sheetResolvedPackingTab, setSheetResolvedPackingTab] = useState<string>('Packing Reg');
   const [sheetTotalPackingInSheet, setSheetTotalPackingInSheet] = useState<number>(0);
   const [sheetStatusFilter, setSheetStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
+  const [sheetTimeframe, setSheetTimeframe] = useState<'today' | 'week' | 'month' | 'all'>('today');
 
   // Fetch data from Google Sheets - cross-referencing "Nota Diproses" & "Packing Reg"
   const loadSheetData = useCallback(async () => {
@@ -370,23 +373,42 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     }
   }, [accessToken, lastSyncTimestamp, loadSheetData]);
 
-  // Google Sheet statistics for the top dashboard
-  const sheetTotalCount = sheetRows.length;
-  const sheetPackedCount = useMemo(() => sheetRows.filter((r) => r.isPacked).length, [sheetRows]);
+  // Google Sheet timeframe filtering for the top dashboard (Default: 'today' / Harian)
+  const dashboardFilteredSheetRows = useMemo(() => {
+    if (sheetTimeframe === 'today') {
+      return sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime));
+    }
+    if (sheetTimeframe === 'week') {
+      return sheetRows.filter((r) => isDateThisWeek(r.adminDate, r.adminTime));
+    }
+    if (sheetTimeframe === 'month') {
+      return sheetRows.filter((r) => isDateThisMonth(r.adminDate, r.adminTime));
+    }
+    return sheetRows;
+  }, [sheetRows, sheetTimeframe]);
+
+  // Google Sheet statistics for the top dashboard based on selected timeframe
+  const sheetTotalCount = dashboardFilteredSheetRows.length;
+  const sheetPackedCount = useMemo(() => dashboardFilteredSheetRows.filter((r) => r.isPacked).length, [dashboardFilteredSheetRows]);
   const sheetPendingCount = sheetTotalCount - sheetPackedCount;
   const sheetOverdueCount = useMemo(() => {
-    return sheetRows.filter((r) => {
+    return dashboardFilteredSheetRows.filter((r) => {
       if (r.isPacked) return false;
       const d = parseNotaDateTime(r.adminDate, r.adminTime);
       if (!d) return false;
       const elapsed = Math.floor((nowMs - d.getTime()) / 60000);
       return elapsed >= currentThreshold;
     }).length;
-  }, [sheetRows, nowMs, currentThreshold]);
+  }, [dashboardFilteredSheetRows, nowMs, currentThreshold]);
 
-  const sheetShopeeCount = useMemo(() => sheetRows.filter((r) => r.platform === 'Shopee').length, [sheetRows]);
-  const sheetTokpedCount = useMemo(() => sheetRows.filter((r) => r.platform === 'Tokopedia/TikTok').length, [sheetRows]);
+  const sheetShopeeCount = useMemo(() => dashboardFilteredSheetRows.filter((r) => r.platform === 'Shopee').length, [dashboardFilteredSheetRows]);
+  const sheetTokpedCount = useMemo(() => dashboardFilteredSheetRows.filter((r) => r.platform === 'Tokopedia/TikTok').length, [dashboardFilteredSheetRows]);
   const sheetProgressPercent = sheetTotalCount > 0 ? Math.round((sheetPackedCount / sheetTotalCount) * 100) : 0;
+
+  // Counts for all timeframes for badge counters
+  const sheetTodayTotal = useMemo(() => sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime)).length, [sheetRows]);
+  const sheetWeekTotal = useMemo(() => sheetRows.filter((r) => isDateThisWeek(r.adminDate, r.adminTime)).length, [sheetRows]);
+  const sheetMonthTotal = useMemo(() => sheetRows.filter((r) => isDateThisMonth(r.adminDate, r.adminTime)).length, [sheetRows]);
 
   const handleFilterAndScrollSheet = (status: 'all' | 'pending' | 'overdue' | 'packed') => {
     setSheetStatusFilter(status);
@@ -941,6 +963,114 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           </div>
         </div>
 
+        {/* Timeframe Filter Bar (Default: Harian / Hari Ini, with Mingguan, Bulanan, Semua Data) */}
+        <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4 relative z-10">
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-800/90 p-1 rounded-xl border border-slate-700/80 shadow-xs">
+            <span className="text-[11px] font-bold text-slate-400 px-2 py-1 flex items-center gap-1">
+              <Filter className="w-3 h-3 text-emerald-400" />
+              <span>Filter Periode:</span>
+            </span>
+            <button
+              type="button"
+              id="btn-timeframe-today"
+              onClick={() => setSheetTimeframe('today')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                sheetTimeframe === 'today'
+                  ? 'bg-emerald-500 text-slate-950 font-black shadow-xs ring-1 ring-emerald-300'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/70'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Harian (Hari Ini)</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  sheetTimeframe === 'today'
+                    ? 'bg-emerald-900/30 text-slate-950'
+                    : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                {sheetTodayTotal}
+              </span>
+            </button>
+            <button
+              type="button"
+              id="btn-timeframe-week"
+              onClick={() => setSheetTimeframe('week')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                sheetTimeframe === 'week'
+                  ? 'bg-emerald-500 text-slate-950 font-black shadow-xs ring-1 ring-emerald-300'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/70'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Mingguan (Minggu Ini)</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  sheetTimeframe === 'week'
+                    ? 'bg-emerald-900/30 text-slate-950'
+                    : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                {sheetWeekTotal}
+              </span>
+            </button>
+            <button
+              type="button"
+              id="btn-timeframe-month"
+              onClick={() => setSheetTimeframe('month')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                sheetTimeframe === 'month'
+                  ? 'bg-emerald-500 text-slate-950 font-black shadow-xs ring-1 ring-emerald-300'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/70'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Bulanan (Bulan Ini)</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  sheetTimeframe === 'month'
+                    ? 'bg-emerald-900/30 text-slate-950'
+                    : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                {sheetMonthTotal}
+              </span>
+            </button>
+            <button
+              type="button"
+              id="btn-timeframe-all"
+              onClick={() => setSheetTimeframe('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                sheetTimeframe === 'all'
+                  ? 'bg-emerald-500 text-slate-950 font-black shadow-xs ring-1 ring-emerald-300'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/70'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Semua Data</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  sheetTimeframe === 'all'
+                    ? 'bg-emerald-900/30 text-slate-950'
+                    : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                {sheetRows.length}
+              </span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <span>Menampilkan:</span>
+            <span className="font-extrabold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-500/30">
+              {sheetTimeframe === 'today' && 'Data Harian (Hari Ini)'}
+              {sheetTimeframe === 'week' && 'Data Mingguan (Minggu Ini)'}
+              {sheetTimeframe === 'month' && 'Data Bulanan (Bulan Ini)'}
+              {sheetTimeframe === 'all' && 'Semua Riwayat Data'}
+            </span>
+          </div>
+        </div>
+
         {/* Dashboard 4 Core Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-5 relative z-10">
           {/* Card 1: BELUM PACKING (Highlighted Primary Focus) */}
@@ -1053,7 +1183,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             </p>
           </div>
 
-          {/* Card 4: TOTAL NOTA DI SHEET */}
+          {/* Card 4: TOTAL NOTA SESUAI PERIODE */}
           <div
             id="card-sheet-total"
             onClick={() => handleFilterAndScrollSheet('all')}
@@ -1066,10 +1196,22 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             <div className="flex items-center justify-between mb-2">
               <span className="text-slate-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                Total di Sheet
+                {sheetTimeframe === 'today'
+                  ? 'Total Harian'
+                  : sheetTimeframe === 'week'
+                  ? 'Total Mingguan'
+                  : sheetTimeframe === 'month'
+                  ? 'Total Bulanan'
+                  : 'Total di Sheet'}
               </span>
               <span className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded-full text-[10px] font-bold">
-                Semua
+                {sheetTimeframe === 'today'
+                  ? 'Hari Ini'
+                  : sheetTimeframe === 'week'
+                  ? 'Minggu Ini'
+                  : sheetTimeframe === 'month'
+                  ? 'Bulan Ini'
+                  : 'Semua'}
               </span>
             </div>
             <div className="flex items-baseline gap-2">
@@ -1081,7 +1223,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             <p className="text-[11px] text-slate-400 mt-2 flex items-center justify-between">
               <span>Shopee: {sheetShopeeCount} • Tokped: {sheetTokpedCount}</span>
               <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform">
-                Lihat Semua →
+                Lihat Tabel →
               </span>
             </p>
           </div>
@@ -2174,6 +2316,8 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
         resolvedTabName={sheetResolvedTab}
         selectedStatusFilter={sheetStatusFilter}
         onStatusFilterChange={setSheetStatusFilter}
+        selectedTimeframe={sheetTimeframe}
+        onTimeframeChange={setSheetTimeframe}
         packedOrders={packedOrders}
         localNotas={notas}
       />

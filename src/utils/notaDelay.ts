@@ -308,6 +308,88 @@ export function isDateToday(
 }
 
 /**
+ * Checks whether a given date or timestamp is from the current week (Monday to Sunday).
+ */
+export function isDateThisWeek(
+  dateStr?: string,
+  timeStr?: string,
+  createdAtMs?: number
+): boolean {
+  const now = new Date();
+
+  let targetDate: Date | null = null;
+  if (createdAtMs && !isNaN(createdAtMs) && createdAtMs > 0) {
+    const cd = new Date(createdAtMs);
+    if (!isNaN(cd.getTime())) targetDate = cd;
+  }
+  if (!targetDate && dateStr && dateStr !== '-') {
+    targetDate = parseNotaDateTime(dateStr, timeStr);
+  }
+
+  if (targetDate && !isNaN(targetDate.getTime())) {
+    // Current week from Monday 00:00:00 to Sunday 23:59:59
+    const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Monday, 6 = Sunday
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek, 0, 0, 0, 0);
+    const endOfWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+    return targetDate >= startOfWeek && targetDate <= endOfWeek;
+  }
+
+  return isDateToday(dateStr, timeStr, createdAtMs);
+}
+
+/**
+ * Checks whether a given date or timestamp is from the current month.
+ */
+export function isDateThisMonth(
+  dateStr?: string,
+  timeStr?: string,
+  createdAtMs?: number
+): boolean {
+  const now = new Date();
+
+  let targetDate: Date | null = null;
+  if (createdAtMs && !isNaN(createdAtMs) && createdAtMs > 0) {
+    const cd = new Date(createdAtMs);
+    if (!isNaN(cd.getTime())) targetDate = cd;
+  }
+  if (!targetDate && dateStr && dateStr !== '-') {
+    targetDate = parseNotaDateTime(dateStr, timeStr);
+  }
+
+  if (targetDate && !isNaN(targetDate.getTime())) {
+    return (
+      targetDate.getFullYear() === now.getFullYear() &&
+      targetDate.getMonth() === now.getMonth()
+    );
+  }
+
+  if (dateStr && dateStr !== '-') {
+    const clean = dateStr.trim().toLowerCase();
+    const year = String(now.getFullYear());
+    const monthNames = [
+      'januari', 'februari', 'maret', 'april', 'mei', 'juni',
+      'juli', 'agustus', 'september', 'oktober', 'november', 'desember'
+    ];
+    const curMonthName = monthNames[now.getMonth()];
+    const padM = String(now.getMonth() + 1).padStart(2, '0');
+    const m = String(now.getMonth() + 1);
+
+    if (clean.includes(curMonthName) && clean.includes(year)) {
+      return true;
+    }
+    if (
+      clean.includes(`/${padM}/${year}`) ||
+      clean.includes(`-${padM}-`) ||
+      clean.includes(`/${m}/${year}`)
+    ) {
+      return true;
+    }
+  }
+
+  return isDateToday(dateStr, timeStr, createdAtMs);
+}
+
+/**
  * Format label threshold untuk tampilan teks yang rapi dan mudah dibaca
  * e.g. 1440 -> "1 Hari", 2880 -> "2 Hari", 720 -> "12 Jam", 30 -> "30 Menit"
  */

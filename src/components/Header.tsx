@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Calendar,
   Package,
-  Share2,
   Download,
   Settings,
   Truck,
@@ -28,7 +27,7 @@ interface HeaderProps {
   onOpenGoogleDriveModal: () => void;
   onGoogleSignIn: () => void;
   onOpenSettings: () => void;
-  onShareWhatsApp: () => void;
+  onShareWhatsApp?: () => void;
   onExportCSV: () => void;
 }
 
@@ -45,7 +44,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenGoogleDriveModal,
   onGoogleSignIn,
   onOpenSettings,
-  onShareWhatsApp,
   onExportCSV,
 }) => {
   const total =
@@ -127,15 +125,6 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Quick Utility Buttons */}
           <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl">
             <button
-              id="btn-share-wa"
-              onClick={onShareWhatsApp}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-emerald-700 hover:bg-white rounded-lg transition-all"
-              title="Salin rekap untuk WhatsApp"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Salin WA</span>
-            </button>
-            <button
               id="btn-export-csv"
               onClick={onExportCSV}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-indigo-700 hover:bg-white rounded-lg transition-all"
@@ -152,22 +141,6 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Settings className="w-4 h-4" />
             </button>
-          </div>
-
-          {/* Total Today Badge */}
-          <div
-            id="total-badge-card"
-            className="bg-indigo-50 border border-indigo-100 px-5 py-2 rounded-xl text-center min-w-[130px] shadow-sm"
-          >
-            <div className="text-indigo-600 font-semibold text-[11px] uppercase tracking-wider mb-0.5">
-              Total Ekspedisi
-            </div>
-            <div
-              id="totalCount"
-              className="text-2xl md:text-3xl font-black text-indigo-700 leading-none"
-            >
-              {total}
-            </div>
           </div>
         </div>
       </div>
