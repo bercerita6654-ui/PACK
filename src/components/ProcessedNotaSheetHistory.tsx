@@ -17,6 +17,7 @@ import {
   Import,
   Calendar,
   FileText,
+  Layers,
 } from 'lucide-react';
 import { PlatformType, PackedOrder, ProcessedNota } from '../types';
 import {
@@ -79,6 +80,7 @@ export interface SheetProcessedNotaRow {
   notes: string;
   matchedFromPackingReg?: boolean;
   matchedSource?: 'packing_reg_sheet' | 'packing_session' | 'local_nota' | 'sheet_status';
+  sourceSheetTab?: 'Nota Diproses' | 'Packing Reg' | 'both';
 }
 
 export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps> = ({
@@ -150,6 +152,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<'Semua' | 'Shopee' | 'Tokopedia/TikTok'>('Semua');
+  const [sourceTabFilter, setSourceTabFilter] = useState<'all' | 'nota' | 'packing'>('all');
   const [internalStatusFilter, setInternalStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
   const [internalTimeframe, setInternalTimeframe] = useState<'today' | 'week' | 'month' | 'all'>('today');
 
@@ -323,8 +326,99 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
           notes,
           matchedFromPackingReg: statusEval.matchedSource === 'packing_reg_sheet',
           matchedSource: statusEval.matchedSource,
+          sourceSheetTab: statusEval.matchedSource === 'packing_reg_sheet' ? 'both' : 'Nota Diproses',
         });
       });
+
+      // Also merge records from Sheet "Packing Reg" so all saved packing scan data is visible
+      const existingOrdersInParsed = new Set<string>();
+      const existingNormInParsed = new Set<string>();
+      parsed.forEach((p) => {
+        existingOrdersInParsed.add(p.orderNumber.toUpperCase());
+        const norm = normalizeOrderNumber(p.orderNumber);
+        if (norm) existingNormInParsed.add(norm);
+      });
+
+      let packColOrder = 1;
+      let packColPlatform = 2;
+      let packColDate = 3;
+      let packColTime = 4;
+      let packColStatus = 5;
+
+      if (result.packingHeaders && result.packingHeaders.length > 0) {
+        result.packingHeaders.forEach((h, idx) => {
+          const lower = h.trim().toLowerCase();
+          if (lower.includes('pesanan') || lower.includes('resi') || lower.includes('order') || lower.includes('nota') || lower.includes('barcode')) {
+            packColOrder = idx;
+          } else if (lower.includes('platform') || lower.includes('ekspedisi') || lower.includes('marketplace')) {
+            packColPlatform = idx;
+          } else if (lower.includes('tanggal') || lower.includes('tgl') || lower.includes('date')) {
+            packColDate = idx;
+          } else if (lower.includes('waktu') || lower.includes('jam') || lower.includes('time') || lower.includes('scan')) {
+            packColTime = idx;
+          } else if (lower.includes('status') || lower.includes('kondisi')) {
+            packColStatus = idx;
+          }
+        });
+      }
+
+      if (result.packingRows && result.packingRows.length > 0) {
+        result.packingRows.forEach((r, idx) => {
+          if (!r || r.length === 0 || !r.some((cell) => cell && cell.trim() !== '')) return;
+          const orderNumber = (r[packColOrder] ?? r[1] ?? '').trim().toUpperCase();
+          if (!orderNumber) return;
+          const norm = normalizeOrderNumber(orderNumber);
+
+          if (existingOrdersInParsed.has(orderNumber) || (norm && existingNormInParsed.has(norm))) {
+            const existing = parsed.find(
+              (p) => p.orderNumber.toUpperCase() === orderNumber || (norm && normalizeOrderNumber(p.orderNumber) === norm)
+            );
+            if (existing) {
+              existing.isPacked = true;
+              existing.matchedFromPackingReg = true;
+              existing.matchedSource = 'packing_reg_sheet';
+              existing.sourceSheetTab = 'both';
+              if (!existing.packingTime || existing.packingTime === '-') {
+                existing.packingTime = (r[packColTime] ?? r[4] ?? '-').trim();
+              }
+            }
+            return;
+          }
+
+          const rawPlatform = (r[packColPlatform] ?? r[2] ?? '').trim();
+          const date = (r[packColDate] ?? r[3] ?? '-').trim();
+          const timestamp = (r[packColTime] ?? r[4] ?? '-').trim();
+          const status = (r[packColStatus] ?? r[5] ?? 'Selesai Packing').trim();
+
+          let platform: PlatformType = 'Shopee';
+          if (
+            rawPlatform.toLowerCase().includes('tokopedia') ||
+            rawPlatform.toLowerCase().includes('tiktok') ||
+            (orderNumber.length >= 16 && /^\d+$/.test(orderNumber))
+          ) {
+            platform = 'Tokopedia/TikTok';
+          }
+
+          existingOrdersInParsed.add(orderNumber);
+          if (norm) existingNormInParsed.add(norm);
+
+          parsed.push({
+            rowNumber: idx + 2,
+            no: r[0] ? r[0].trim() : String(parsed.length + 1),
+            orderNumber,
+            platform,
+            adminDate: date,
+            adminTime: timestamp,
+            isPacked: true,
+            packingStatus: status || 'Selesai Packing',
+            packingTime: timestamp,
+            notes: 'Tersimpan di Sheet Packing Reg',
+            matchedFromPackingReg: true,
+            matchedSource: 'packing_reg_sheet',
+            sourceSheetTab: 'Packing Reg',
+          });
+        });
+      }
 
       setInternalSheetRows(parsed);
       setInternalLastFetchedAt(new Date());
@@ -387,7 +481,20 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     [sheetRows]
   );
 
-  // Timeframe statistics in Google Sheet (Tab 'Nota Diproses')
+  const notaTabCount = useMemo(
+    () => sheetRows.filter((r) => r.sourceSheetTab === 'Nota Diproses' || r.sourceSheetTab === 'both' || !r.sourceSheetTab).length,
+    [sheetRows]
+  );
+  const packingTabCount = useMemo(
+    () => sheetRows.filter((r) => r.sourceSheetTab === 'Packing Reg' || r.sourceSheetTab === 'both' || r.matchedFromPackingReg).length,
+    [sheetRows]
+  );
+  const syncedBothCount = useMemo(
+    () => sheetRows.filter((r) => r.sourceSheetTab === 'both' || (r.matchedFromPackingReg && r.sourceSheetTab === 'Nota Diproses')).length,
+    [sheetRows]
+  );
+
+  // Timeframe statistics in Google Sheet
   const periodStats = useMemo(() => {
     let effectiveRows = sheetRows;
     if (timeframe === 'today') {
@@ -420,6 +527,17 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
       const matchPlatform =
         platformFilter === 'Semua' || row.platform === platformFilter;
 
+      const matchSourceTab = (() => {
+        if (sourceTabFilter === 'all') return true;
+        if (sourceTabFilter === 'nota') {
+          return row.sourceSheetTab === 'Nota Diproses' || row.sourceSheetTab === 'both' || !row.sourceSheetTab;
+        }
+        if (sourceTabFilter === 'packing') {
+          return row.sourceSheetTab === 'Packing Reg' || row.sourceSheetTab === 'both' || row.matchedFromPackingReg;
+        }
+        return true;
+      })();
+
       const isRowOverdue = (() => {
         if (row.isPacked) return false;
         const d = parseNotaDateTime(row.adminDate, row.adminTime);
@@ -446,7 +564,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
         row.adminDate.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
         row.adminTime.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
         row.notes.toLowerCase().includes(searchQuery.toLowerCase().trim());
-      return matchPlatform && matchStatus && matchSearch && matchTimeframe;
+      return matchPlatform && matchSourceTab && matchStatus && matchSearch && matchTimeframe;
     });
 
     if (sortDescending) {
@@ -457,6 +575,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
   }, [
     sheetRows,
     platformFilter,
+    sourceTabFilter,
     statusFilter,
     searchQuery,
     sortDescending,
@@ -968,7 +1087,68 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
       </div>
 
       {/* Filters and Search Bar */}
-      <div className="p-4 sm:p-5 bg-slate-50/70 border-b border-slate-200">
+      <div className="p-4 sm:p-5 bg-slate-50/70 border-b border-slate-200 space-y-3">
+        {/* Row 1: Source Sheet Filter Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-bold text-slate-500 flex items-center gap-1 shrink-0">
+              <Layers className="w-3.5 h-3.5 text-indigo-600" />
+              Sumber Sheet:
+            </span>
+            <div className="inline-flex bg-slate-200/80 p-0.5 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                id="btn-source-tab-all"
+                onClick={() => setSourceTabFilter('all')}
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                  sourceTabFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Tampilkan seluruh data nota dari tab 'Nota Diproses' dan 'Packing Reg'"
+              >
+                <span>Semua Sumber ({totalInSheet})</span>
+              </button>
+              <button
+                type="button"
+                id="btn-source-tab-nota"
+                onClick={() => setSourceTabFilter('nota')}
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                  sourceTabFilter === 'nota'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                    : 'text-indigo-900 hover:text-indigo-950'
+                }`}
+                title="Tampilkan nota dari Tab 'Nota Diproses'"
+              >
+                <FileSpreadsheet className="w-3 h-3" />
+                <span>Tab "Nota Diproses" ({notaTabCount})</span>
+              </button>
+              <button
+                type="button"
+                id="btn-source-tab-packing"
+                onClick={() => setSourceTabFilter('packing')}
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                  sourceTabFilter === 'packing'
+                    ? 'bg-emerald-700 text-white shadow-2xs font-black'
+                    : 'text-emerald-900 hover:text-emerald-950'
+                }`}
+                title="Tampilkan riwayat dari Tab 'Packing Reg'"
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                <span>Tab "Packing Reg" ({packingTabCount})</span>
+              </button>
+            </div>
+          </div>
+
+          {syncedBothCount > 0 && (
+            <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span><strong>{syncedBothCount}</strong> nota tersinkron di kedua tab</span>
+            </span>
+          )}
+        </div>
+
+        {/* Row 2: Status, Platform, Search */}
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
@@ -1160,6 +1340,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                 <th className="py-2.5 px-4 text-center w-12">No</th>
                 <th className="py-2.5 px-4">No Nota / Pesanan</th>
                 <th className="py-2.5 px-4">Platform</th>
+                <th className="py-2.5 px-4">Sumber Sheet</th>
                 <th className="py-2.5 px-4">Waktu Admin</th>
                 <th className="py-2.5 px-4 text-center">Status Packing</th>
                 <th className="py-2.5 px-4">Waktu Packing</th>
@@ -1227,6 +1408,34 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                         </span>
                       </td>
 
+                      <td className="py-2.5 px-4">
+                        {row.sourceSheetTab === 'both' || (row.matchedFromPackingReg && row.sourceSheetTab === 'Nota Diproses') ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300"
+                            title="Tersinkron di 2 Sheet: Nota Diproses & Packing Reg"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <span>Sinkron 2 Sheet</span>
+                          </span>
+                        ) : row.sourceSheetTab === 'Packing Reg' || row.matchedFromPackingReg ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-200"
+                            title="Tersimpan di Sheet Packing Reg (Sudah Packing)"
+                          >
+                            <FileSpreadsheet className="w-3 h-3 text-indigo-600 shrink-0" />
+                            <span>Packing Reg</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200"
+                            title="Tersimpan di Sheet Nota Diproses"
+                          >
+                            <FileText className="w-3 h-3 text-slate-500 shrink-0" />
+                            <span>Nota Diproses</span>
+                          </span>
+                        )}
+                      </td>
+
                       <td className="py-2.5 px-4 text-slate-600">
                         <div>{row.adminTime}</div>
                         <div className="text-[10px] text-slate-400">{row.adminDate}</div>
@@ -1281,7 +1490,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
               })
               ) : (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-400">
+                  <td colSpan={9} className="py-8 text-center text-slate-400">
                     <p className="text-xs">Tidak ada data sheet yang cocok dengan filter atau kata kunci pencarian.</p>
                   </td>
                 </tr>

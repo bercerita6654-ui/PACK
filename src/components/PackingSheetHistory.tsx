@@ -12,10 +12,13 @@ import {
   Filter,
   ArrowUpDown,
   Download,
+  Share2,
+  Check,
 } from 'lucide-react';
 import { PlatformType } from '../types';
 import { fetchPackingRegHistory } from '../services/googleWorkspace';
 import { isAuthExpiredError, invalidateStoredToken } from '../services/googleAuth';
+import { generatePackingReportText } from '../utils/notaDelay';
 
 interface PackingSheetHistoryProps {
   accessToken: string | null;
@@ -182,6 +185,43 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
     );
   };
 
+  const [copiedReport, setCopiedReport] = useState<boolean>(false);
+
+  // Copy Formatted Packing Status Report (Update Harian Pesanan REG) from Sheet data
+  const handleCopyPackingReport = async () => {
+    if (sheetRows.length === 0) {
+      showToast('Belum ada data riwayat di sheet untuk dibuatkan report.', 'warning');
+      return;
+    }
+
+    const reportText = generatePackingReportText({
+      totalCount: sheetRows.length,
+      packedCount: sheetRows.length, // All items in Packing Reg are already packed
+      pendingCount: 0,
+      timeframe: 'today',
+      lastPackedTimeStr: sheetRows.length > 0 ? sheetRows[sheetRows.length - 1].timestamp : undefined,
+      customDate: new Date(),
+    });
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(reportText);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = reportText;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedReport(true);
+      setTimeout(() => setCopiedReport(false), 2500);
+      showToast('Report status packing sheet berhasil disalin!', 'success');
+    } catch {
+      showToast('Gagal menyalin report.', 'error');
+    }
+  };
+
   // Download filtered sheet data to CSV
   const handleDownloadCSV = () => {
     if (sheetRows.length === 0) {
@@ -247,6 +287,26 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            id="btn-copy-sheet-packing-report"
+            onClick={handleCopyPackingReport}
+            className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+            title="Salin ringkasan format WhatsApp/laporan (Update Harian Pesanan REG)"
+          >
+            {copiedReport ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Report Tersalin!</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="w-3.5 h-3.5 text-amber-700" />
+                <span>Salin Report</span>
+              </>
+            )}
+          </button>
+
           <button
             type="button"
             id="btn-refresh-sheet-history"
@@ -372,6 +432,21 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
               title={sortDescending ? 'Urutan: Data Terkini di Atas' : 'Urutan: Data Awal di Atas'}
             >
               <ArrowUpDown className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              id="btn-copy-sheet-packing-report-table"
+              onClick={handleCopyPackingReport}
+              className="p-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-xl text-amber-900 text-xs font-bold flex items-center gap-1 transition-colors shadow-2xs"
+              title="Salin report status packing (Update Harian Pesanan REG)"
+            >
+              {copiedReport ? (
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+              ) : (
+                <Share2 className="w-3.5 h-3.5 text-amber-700" />
+              )}
+              <span className="hidden sm:inline">Report</span>
             </button>
 
             <button

@@ -11,6 +11,7 @@ import { HistoryModal } from './components/HistoryModal';
 import { SettingsModal } from './components/SettingsModal';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { ConfirmWorkspaceActionModal } from './components/ConfirmWorkspaceActionModal';
+import { SyncProgressModal } from './components/SyncProgressModal';
 import { ToastContainer } from './components/Toast';
 import { User } from 'firebase/auth';
 import {
@@ -43,6 +44,7 @@ import {
   PlatformType,
   ActiveSpreadsheet,
   ProcessedNota,
+  SyncProgressInfo,
 } from './types';
 import {
   formatIndonesianDate,
@@ -101,6 +103,7 @@ export default function App() {
     action: async () => {},
   });
   const [isWorkspaceSubmitting, setIsWorkspaceSubmitting] = useState<boolean>(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgressInfo | null>(null);
   const [lastPackingSyncTime, setLastPackingSyncTime] = useState<number>(0);
   const [lastNotaSyncTime, setLastNotaSyncTime] = useState<number>(0);
 
@@ -980,6 +983,24 @@ export default function App() {
         ],
         action: async () => {
           setIsWorkspaceSubmitting(true);
+          setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
+          setSyncProgress({
+            isActive: true,
+            title: 'Menyimpan Rekap Kiriman Paket',
+            currentStage: 'Menghubungkan ke Google Sheets...',
+            stageIndex: 1,
+            totalStages: 5,
+            percent: 10,
+            totalItems: 1,
+            processedItems: 0,
+            newItemsAdded: 0,
+            duplicateItemsSkipped: 0,
+            sheetTab: 'Rekap Harian',
+            spreadsheetName: activeSpreadsheet.name,
+            status: 'preparing',
+            detailMessage: 'Menyiapkan baris rekap harian...',
+          });
+
           try {
             let activeToken = accessToken;
             const rowData = [
@@ -994,23 +1015,35 @@ export default function App() {
               new Date().toLocaleTimeString('id-ID'),
             ];
 
+            const onProgress = (p: Partial<SyncProgressInfo>) => {
+              setSyncProgress((prev) => (prev ? { ...prev, ...p } : null));
+            };
+
             try {
-              await appendDailyRekapRow(activeToken!, activeSpreadsheet.id, rowData);
+              await appendDailyRekapRow(activeToken!, activeSpreadsheet.id, rowData, onProgress);
             } catch (initialErr: any) {
               if (isAuthExpiredError(initialErr)) {
                 showToast('Memperbarui token akses Google...', 'info');
                 activeToken = await refreshGoogleToken();
                 setAccessToken(activeToken);
-                await appendDailyRekapRow(activeToken, activeSpreadsheet.id, rowData);
+                await appendDailyRekapRow(activeToken, activeSpreadsheet.id, rowData, onProgress);
               } else {
                 throw initialErr;
               }
             }
 
             showToast('Sukses! Rekap kiriman paket berhasil disimpan ke Google Sheet.', 'success');
-            setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
           } catch (err: any) {
             console.error('Error saving to Google Sheet:', err);
+            setSyncProgress((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    status: 'error',
+                    errorMessage: err.message || 'Gagal menyimpan ke Google Sheet.',
+                  }
+                : null
+            );
             showToast(err.message || 'Gagal menyimpan ke Google Sheet.', 'error');
           } finally {
             setIsWorkspaceSubmitting(false);
@@ -1108,6 +1141,25 @@ export default function App() {
       ],
       action: async () => {
         setIsWorkspaceSubmitting(true);
+        setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
+
+        setSyncProgress({
+          isActive: true,
+          title: `Simpan Hasil Scan Packing (${targetTab})`,
+          currentStage: 'Menghubungkan ke Google Sheets...',
+          stageIndex: 1,
+          totalStages: 5,
+          percent: 10,
+          totalItems: packedOrders.length,
+          processedItems: 0,
+          newItemsAdded: 0,
+          duplicateItemsSkipped: 0,
+          sheetTab: targetTab,
+          spreadsheetName: `Sheet: ${targetTab}`,
+          status: 'preparing',
+          detailMessage: `Menyiapkan ${packedOrders.length} nomor pesanan...`,
+        });
+
         try {
           let activeToken = accessToken;
           if (!activeToken) {
@@ -1124,15 +1176,19 @@ export default function App() {
             'Selesai Packing',
           ]);
 
+          const onProgress = (p: Partial<SyncProgressInfo>) => {
+            setSyncProgress((prev) => (prev ? { ...prev, ...p } : null));
+          };
+
           let saveResult;
           try {
-            saveResult = await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab);
+            saveResult = await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab, onProgress);
           } catch (initialErr: any) {
             if (isAuthExpiredError(initialErr)) {
               showToast('Memperbarui token akses Google...', 'info');
               activeToken = await refreshGoogleToken();
               setAccessToken(activeToken);
-              saveResult = await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab);
+              saveResult = await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab, onProgress);
             } else {
               throw initialErr;
             }
@@ -1151,9 +1207,17 @@ export default function App() {
           }
 
           setLastPackingSyncTime(Date.now());
-          setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
         } catch (err: any) {
           console.error('Error saving packed orders:', err);
+          setSyncProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: 'error',
+                  errorMessage: err.message || 'Gagal menyimpan ke Google Sheet.',
+                }
+              : null
+          );
           showToast(err.message || 'Gagal menyimpan ke Google Sheet.', 'error');
         } finally {
           setIsWorkspaceSubmitting(false);
@@ -1198,6 +1262,25 @@ export default function App() {
       ],
       action: async () => {
         setIsWorkspaceSubmitting(true);
+        setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
+
+        setSyncProgress({
+          isActive: true,
+          title: `Simpan Data Nota Diproses (${targetTab})`,
+          currentStage: 'Menghubungkan ke Google Sheets...',
+          stageIndex: 1,
+          totalStages: 5,
+          percent: 10,
+          totalItems: processedNotas.length,
+          processedItems: 0,
+          newItemsAdded: 0,
+          duplicateItemsSkipped: 0,
+          sheetTab: targetTab,
+          spreadsheetName: `Sheet: ${targetTab}`,
+          status: 'preparing',
+          detailMessage: `Menyiapkan ${processedNotas.length} data nota...`,
+        });
+
         try {
           let activeToken = accessToken;
           if (!activeToken) {
@@ -1216,15 +1299,19 @@ export default function App() {
             nota.notes || '',
           ]);
 
+          const onProgress = (p: Partial<SyncProgressInfo>) => {
+            setSyncProgress((prev) => (prev ? { ...prev, ...p } : null));
+          };
+
           let saveResult;
           try {
-            saveResult = await appendProcessedNotas(activeToken, targetSpreadsheetId, rows, targetTab);
+            saveResult = await appendProcessedNotas(activeToken, targetSpreadsheetId, rows, targetTab, onProgress);
           } catch (initialErr: any) {
             if (isAuthExpiredError(initialErr)) {
               showToast('Memperbarui token akses Google...', 'info');
               activeToken = await refreshGoogleToken();
               setAccessToken(activeToken);
-              saveResult = await appendProcessedNotas(activeToken, targetSpreadsheetId, rows, targetTab);
+              saveResult = await appendProcessedNotas(activeToken, targetSpreadsheetId, rows, targetTab, onProgress);
             } else {
               throw initialErr;
             }
@@ -1251,9 +1338,17 @@ export default function App() {
           }
 
           setLastNotaSyncTime(Date.now());
-          setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
         } catch (err: any) {
           console.error('Error saving processed notas:', err);
+          setSyncProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: 'error',
+                  errorMessage: err.message || 'Gagal menyimpan data nota ke Google Sheet.',
+                }
+              : null
+          );
           showToast(err.message || 'Gagal menyimpan data nota ke Google Sheet.', 'error');
         } finally {
           setIsWorkspaceSubmitting(false);
@@ -1411,6 +1506,16 @@ export default function App() {
         spreadsheetUrl={workspaceConfirmModal.spreadsheetUrl}
         details={workspaceConfirmModal.details}
         isSubmitting={isWorkspaceSubmitting}
+      />
+
+      {/* Sync Progress Indicator Modal for Google Sheets upload */}
+      <SyncProgressModal
+        progress={syncProgress}
+        onClose={() => setSyncProgress(null)}
+        spreadsheetUrl={
+          activeSpreadsheet?.url ||
+          `https://docs.google.com/spreadsheets/d/${TARGET_PACKING_SPREADSHEET_ID}/edit`
+        }
       />
 
       {/* Google Drive & Sheets Manager Modal */}

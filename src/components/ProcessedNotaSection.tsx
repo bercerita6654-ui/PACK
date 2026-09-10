@@ -347,8 +347,101 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           notes,
           matchedFromPackingReg: statusEval.matchedSource === 'packing_reg_sheet',
           matchedSource: statusEval.matchedSource,
+          sourceSheetTab: statusEval.matchedSource === 'packing_reg_sheet' ? 'both' : 'Nota Diproses',
         });
       });
+
+      // Also merge records from Sheet "Packing Reg" so all saved packing scan data is visible in sheet history
+      const existingOrdersInParsed = new Set<string>();
+      const existingNormInParsed = new Set<string>();
+      parsed.forEach((p) => {
+        existingOrdersInParsed.add(p.orderNumber.toUpperCase());
+        const norm = normalizeOrderNumber(p.orderNumber);
+        if (norm) existingNormInParsed.add(norm);
+      });
+
+      let packColOrder = 1;
+      let packColPlatform = 2;
+      let packColDate = 3;
+      let packColTime = 4;
+      let packColStatus = 5;
+
+      if (result.packingHeaders && result.packingHeaders.length > 0) {
+        result.packingHeaders.forEach((h, idx) => {
+          const lower = h.trim().toLowerCase();
+          if (lower.includes('pesanan') || lower.includes('resi') || lower.includes('order') || lower.includes('nota') || lower.includes('barcode')) {
+            packColOrder = idx;
+          } else if (lower.includes('platform') || lower.includes('ekspedisi') || lower.includes('marketplace')) {
+            packColPlatform = idx;
+          } else if (lower.includes('tanggal') || lower.includes('tgl') || lower.includes('date')) {
+            packColDate = idx;
+          } else if (lower.includes('waktu') || lower.includes('jam') || lower.includes('time') || lower.includes('scan')) {
+            packColTime = idx;
+          } else if (lower.includes('status') || lower.includes('kondisi')) {
+            packColStatus = idx;
+          }
+        });
+      }
+
+      if (result.packingRows && result.packingRows.length > 0) {
+        result.packingRows.forEach((r, idx) => {
+          if (!r || r.length === 0 || !r.some((cell) => cell && cell.trim() !== '')) return;
+          const orderNumber = (r[packColOrder] ?? r[1] ?? '').trim().toUpperCase();
+          if (!orderNumber) return;
+          const norm = normalizeOrderNumber(orderNumber);
+
+          // If already in parsed, ensure it is flagged as in both sheets and packed
+          if (existingOrdersInParsed.has(orderNumber) || (norm && existingNormInParsed.has(norm))) {
+            const existing = parsed.find(
+              (p) => p.orderNumber.toUpperCase() === orderNumber || (norm && normalizeOrderNumber(p.orderNumber) === norm)
+            );
+            if (existing) {
+              existing.isPacked = true;
+              existing.matchedFromPackingReg = true;
+              existing.matchedSource = 'packing_reg_sheet';
+              existing.sourceSheetTab = 'both';
+              if (!existing.packingTime || existing.packingTime === '-') {
+                existing.packingTime = (r[packColTime] ?? r[4] ?? '-').trim();
+              }
+            }
+            return;
+          }
+
+          // If ONLY in Sheet Packing Reg, add it as a saved packing row
+          const rawPlatform = (r[packColPlatform] ?? r[2] ?? '').trim();
+          const date = (r[packColDate] ?? r[3] ?? '-').trim();
+          const timestamp = (r[packColTime] ?? r[4] ?? '-').trim();
+          const status = (r[packColStatus] ?? r[5] ?? 'Selesai Packing').trim();
+
+          let platform: PlatformType = 'Shopee';
+          if (
+            rawPlatform.toLowerCase().includes('tokopedia') ||
+            rawPlatform.toLowerCase().includes('tiktok') ||
+            (orderNumber.length >= 16 && /^\d+$/.test(orderNumber))
+          ) {
+            platform = 'Tokopedia/TikTok';
+          }
+
+          existingOrdersInParsed.add(orderNumber);
+          if (norm) existingNormInParsed.add(norm);
+
+          parsed.push({
+            rowNumber: idx + 2,
+            no: r[0] ? r[0].trim() : String(parsed.length + 1),
+            orderNumber,
+            platform,
+            adminDate: date,
+            adminTime: timestamp,
+            isPacked: true,
+            packingStatus: status || 'Selesai Packing',
+            packingTime: timestamp,
+            notes: 'Tersimpan di Sheet Packing Reg',
+            matchedFromPackingReg: true,
+            matchedSource: 'packing_reg_sheet',
+            sourceSheetTab: 'Packing Reg',
+          });
+        });
+      }
 
       setSheetRows(parsed);
       setSheetLastFetchedAt(new Date());

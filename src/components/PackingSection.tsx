@@ -24,6 +24,7 @@ import {
   X,
   CornerDownLeft,
   Barcode,
+  Share2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PackedOrder, PlatformType, ProcessedNota } from '../types';
@@ -34,6 +35,7 @@ import {
   isNotaDelayed,
   DEFAULT_DELAY_THRESHOLD_MINUTES,
   formatThresholdLabel,
+  generatePackingReportText,
 } from '../utils/notaDelay';
 
 interface PackingSectionProps {
@@ -439,6 +441,50 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     );
   };
 
+  const [copiedReport, setCopiedReport] = useState<boolean>(false);
+
+  // Copy Formatted Packing Status Report (e.g. Update Harian Pesanan REG)
+  const handleCopyPackingReport = async () => {
+    const totalNotas =
+      processedNotas && processedNotas.length > 0 ? processedNotas.length : orders.length;
+    const packedNotas =
+      processedNotas && processedNotas.length > 0
+        ? processedNotas.filter((n) => n.isPacked).length
+        : orders.length;
+    const pendingNotas = Math.max(0, totalNotas - packedNotas);
+
+    // Extract last update time
+    const lastPackedTimeStr =
+      orders.length > 0 ? orders[orders.length - 1].timestamp : undefined;
+
+    const reportText = generatePackingReportText({
+      totalCount: totalNotas,
+      packedCount: packedNotas,
+      pendingCount: pendingNotas,
+      timeframe: 'today',
+      lastPackedTimeStr,
+      customDate: new Date(),
+    });
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(reportText);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = reportText;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedReport(true);
+      setTimeout(() => setCopiedReport(false), 2500);
+      showToast('Report status packing berhasil disalin ke clipboard!', 'success');
+    } catch {
+      showToast('Gagal menyalin report ke clipboard.', 'error');
+    }
+  };
+
   // Export Packing CSV
   const handleExportCSV = () => {
     if (orders.length === 0) {
@@ -509,17 +555,39 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
             </div>
           </div>
 
-          {onNavigateToNotas && (
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
-              id="btn-goto-nota-from-packing"
-              onClick={onNavigateToNotas}
-              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-2xs"
+              id="btn-copy-report-banner-packing"
+              onClick={handleCopyPackingReport}
+              className="px-3.5 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs"
+              title="Salin ringkasan format WhatsApp/laporan (Update Harian Pesanan REG)"
             >
-              <span>Lihat Antrean Nota</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              {copiedReport ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Report Tersalin!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Salin Report</span>
+                </>
+              )}
             </button>
-          )}
+
+            {onNavigateToNotas && (
+              <button
+                type="button"
+                id="btn-goto-nota-from-packing"
+                onClick={onNavigateToNotas}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-2xs"
+              >
+                <span>Lihat Antrean Nota</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -1036,6 +1104,27 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
             >
               <Copy className="w-3.5 h-3.5" />
               <span>Salin No</span>
+            </button>
+
+            {/* Salin Report Button */}
+            <button
+              type="button"
+              id="btn-copy-packing-report"
+              onClick={handleCopyPackingReport}
+              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+              title="Salin ringkasan update harian status packing untuk WhatsApp/chat"
+            >
+              {copiedReport ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Tersalin!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Salin Report</span>
+                </>
+              )}
             </button>
 
             {/* Export CSV */}

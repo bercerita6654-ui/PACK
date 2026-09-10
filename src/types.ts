@@ -70,3 +70,40 @@ export interface ActiveSpreadsheet {
   name: string;
   url?: string;
 }
+
+export interface SheetProcessedNotaRow {
+  rowNumber: number;
+  no: string;
+  orderNumber: string;
+  platform: PlatformType;
+  adminDate: string;
+  adminTime: string;
+  isPacked: boolean;
+  packingStatus: string;
+  packingTime: string;
+  notes: string;
+  matchedFromPackingReg?: boolean;
+  matchedSource?: 'packing_reg_sheet' | 'packing_session' | 'local_nota' | 'sheet_status';
+  sourceSheetTab?: 'Nota Diproses' | 'Packing Reg' | 'both';
+}
+
+export interface SyncProgressInfo {
+  isActive: boolean;
+  title: string;
+  currentStage: string;
+  stageIndex: number;
+  totalStages: number;
+  percent: number;
+  totalItems: number;
+  processedItems: number;
+  newItemsAdded: number;
+  duplicateItemsSkipped: number;
+  currentBatch?: number;
+  totalBatches?: number;
+  speed?: string;
+  detailMessage?: string;
+  sheetTab?: string;
+  spreadsheetName?: string;
+  status: 'preparing' | 'reading' | 'validating' | 'uploading' | 'finalizing' | 'success' | 'error';
+  errorMessage?: string;
+}

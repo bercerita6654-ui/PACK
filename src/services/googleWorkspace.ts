@@ -1,6 +1,7 @@
 export { isAuthExpiredError, invalidateStoredToken } from './googleAuth';
 import { isAuthExpiredError } from './googleAuth';
 import { normalizeOrderNumber, PackingRegRecord } from '../utils/notaDelay';
+import { SyncProgressInfo } from '../types';
 
 export interface DriveSpreadsheetItem {
   id: string;
@@ -164,14 +165,39 @@ export async function createRekapSpreadsheet(
 export async function appendDailyRekapRow(
   accessToken: string,
   spreadsheetId: string,
-  rowData: (string | number)[]
+  rowData: (string | number)[],
+  onProgress?: (progress: Partial<SyncProgressInfo>) => void
 ): Promise<void> {
+  onProgress?.({
+    isActive: true,
+    title: 'Menyimpan Rekap Kiriman Paket',
+    currentStage: 'Menghubungkan ke Google Sheets...',
+    stageIndex: 1,
+    totalStages: 5,
+    percent: 20,
+    totalItems: 1,
+    processedItems: 0,
+    newItemsAdded: 0,
+    duplicateItemsSkipped: 0,
+    status: 'preparing',
+    detailMessage: 'Memeriksa tab Rekap Harian...',
+  });
+
   // Check available sheets first to target the right tab
   const details = await getSpreadsheetDetails(accessToken, spreadsheetId);
   const targetSheet =
     details.sheets.find((s) => s.title.toLowerCase().includes('rekap'))?.title ||
     details.sheets[0]?.title ||
     'Sheet1';
+
+  onProgress?.({
+    currentStage: `Menyiapkan baris data untuk "${targetSheet}"...`,
+    stageIndex: 3,
+    percent: 60,
+    sheetTab: targetSheet,
+    status: 'uploading',
+    detailMessage: 'Mengunggah rekap hitungan ekspedisi hari ini...',
+  });
 
   const range = `${encodeURIComponent(targetSheet)}!A1`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
@@ -191,6 +217,16 @@ export async function appendDailyRekapRow(
     const err = await res.text();
     throw new Error(`Gagal menambahkan data ke Google Sheet: ${res.status} - ${err}`);
   }
+
+  onProgress?.({
+    currentStage: 'Rekap Berhasil Disimpan!',
+    stageIndex: 5,
+    percent: 100,
+    newItemsAdded: 1,
+    processedItems: 1,
+    status: 'success',
+    detailMessage: `Berhasil menambahkan rekap harian ke sheet "${targetSheet}"!`,
+  });
 }
 
 export interface AppendPackingOrdersResult {
@@ -203,13 +239,33 @@ export interface AppendPackingOrdersResult {
 /**
  * Append multiple rows of scanned packed orders to Google Sheet (e.g. Packing Reg)
  * Automatically verifies existing sheet rows to prevent duplicate order numbers / resi.
+ * Supports batch chunking with real-time onProgress visualization.
  */
 export async function appendPackingOrders(
   accessToken: string,
   spreadsheetId: string,
   rows: (string | number)[][],
-  sheetTab: string = 'Packing Reg'
+  sheetTab: string = 'Packing Reg',
+  onProgress?: (progress: Partial<SyncProgressInfo>) => void
 ): Promise<AppendPackingOrdersResult> {
+  const totalInput = rows.length;
+
+  onProgress?.({
+    isActive: true,
+    title: 'Menyimpan Hasil Scan Packing',
+    currentStage: 'Menghubungkan ke Google Sheets...',
+    stageIndex: 1,
+    totalStages: 5,
+    percent: 15,
+    totalItems: totalInput,
+    processedItems: 0,
+    newItemsAdded: 0,
+    duplicateItemsSkipped: 0,
+    sheetTab,
+    status: 'preparing',
+    detailMessage: 'Memeriksa struktur tab dan metadata spreadsheet...',
+  });
+
   const details = await getSpreadsheetDetails(accessToken, spreadsheetId);
   let targetSheet = details.sheets.find(
     (s) => s.title.trim().toLowerCase() === sheetTab.trim().toLowerCase()
@@ -241,6 +297,15 @@ export async function appendPackingOrders(
     }
   }
 
+  onProgress?.({
+    currentStage: `Membaca data lembar "${targetSheet}"...`,
+    stageIndex: 2,
+    percent: 35,
+    sheetTab: targetSheet,
+    status: 'reading',
+    detailMessage: 'Memuat data yang ada untuk mendeteksi nomor pesanan duplikat...',
+  });
+
   // Read existing rows to check for duplicate order numbers and calculate sequential numbering
   let existingValues: any[][] = [];
   try {
@@ -249,6 +314,14 @@ export async function appendPackingOrders(
     if (isAuthExpiredError(e)) throw e;
     console.warn('Could not read existing sheet rows for duplicate check:', e);
   }
+
+  onProgress?.({
+    currentStage: 'Memeriksa duplikasi & menyusun nomor urut...',
+    stageIndex: 3,
+    percent: 50,
+    status: 'validating',
+    detailMessage: 'Membandingkan data scan dengan riwayat pesanan yang sudah ada...',
+  });
 
   const existingOrderSet = new Set<string>();
   let existingDataRowsCount = 0;
@@ -306,27 +379,72 @@ export async function appendPackingOrders(
     }
   }
 
+  onProgress?.({
+    currentStage: 'Menyiapkan batch pengunggahan...',
+    stageIndex: 4,
+    percent: 55,
+    newItemsAdded: rowsToAppend.length,
+    duplicateItemsSkipped: skippedOrders.length,
+    status: 'uploading',
+    detailMessage: `${rowsToAppend.length} data baru valid (${skippedOrders.length} duplikat dilewati)`,
+  });
+
   // Only append if there are new non-duplicate rows
   if (rowsToAppend.length > 0) {
-    const range = `${encodeURIComponent(targetSheet)}!A1`;
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    const CHUNK_SIZE = 50;
+    const totalChunks = Math.ceil(rowsToAppend.length / CHUNK_SIZE);
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        values: rowsToAppend,
-      }),
-    });
+    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+      const start = chunkIdx * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, rowsToAppend.length);
+      const chunkRows = rowsToAppend.slice(start, end);
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Gagal menyimpan data packing ke Google Sheet (${sheetTab}): ${res.status} - ${err}`);
+      const chunkPercent = Math.round(55 + ((chunkIdx + 1) / totalChunks) * 35);
+
+      onProgress?.({
+        currentStage: `Mengunggah batch ${chunkIdx + 1} dari ${totalChunks}...`,
+        stageIndex: 4,
+        percent: chunkPercent,
+        currentBatch: chunkIdx + 1,
+        totalBatches: totalChunks,
+        processedItems: end,
+        newItemsAdded: rowsToAppend.length,
+        duplicateItemsSkipped: skippedOrders.length,
+        status: 'uploading',
+        detailMessage: `Mengunggah baris ${start + 1}-${end} dari ${rowsToAppend.length} data baru...`,
+      });
+
+      const range = `${encodeURIComponent(targetSheet)}!A1`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          values: chunkRows,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Gagal menyimpan data packing ke Google Sheet (${sheetTab}): ${res.status} - ${err}`);
+      }
     }
   }
+
+  onProgress?.({
+    currentStage: 'Sinkronisasi Selesai & Terverifikasi!',
+    stageIndex: 5,
+    percent: 100,
+    newItemsAdded: rowsToAppend.length,
+    duplicateItemsSkipped: skippedOrders.length,
+    processedItems: rowsToAppend.length,
+    status: 'success',
+    detailMessage: `Sukses menyimpan ${rowsToAppend.length} baris ke sheet "${targetSheet}"!`,
+  });
 
   return {
     added: rowsToAppend.length,
@@ -662,13 +780,33 @@ export interface AppendProcessedNotasResult {
 /**
  * Append multiple rows of processed notes to Google Sheet (tab "Nota Diproses")
  * Automatically prevents duplicate notes from being added twice.
+ * Supports batch chunking with real-time onProgress visualization.
  */
 export async function appendProcessedNotas(
   accessToken: string,
   spreadsheetId: string,
   rows: (string | number)[][],
-  sheetTab: string = 'Nota Diproses'
+  sheetTab: string = 'Nota Diproses',
+  onProgress?: (progress: Partial<SyncProgressInfo>) => void
 ): Promise<AppendProcessedNotasResult> {
+  const totalInput = rows.length;
+
+  onProgress?.({
+    isActive: true,
+    title: 'Menyimpan Data Nota Diproses',
+    currentStage: 'Menghubungkan ke Google Sheets...',
+    stageIndex: 1,
+    totalStages: 5,
+    percent: 15,
+    totalItems: totalInput,
+    processedItems: 0,
+    newItemsAdded: 0,
+    duplicateItemsSkipped: 0,
+    sheetTab,
+    status: 'preparing',
+    detailMessage: 'Memeriksa struktur tab dan metadata spreadsheet...',
+  });
+
   const details = await getSpreadsheetDetails(accessToken, spreadsheetId);
   let targetSheet = details.sheets.find(
     (s) => s.title.trim().toLowerCase() === sheetTab.trim().toLowerCase()
@@ -692,6 +830,15 @@ export async function appendProcessedNotas(
     }
   }
 
+  onProgress?.({
+    currentStage: `Membaca data lembar "${targetSheet}"...`,
+    stageIndex: 2,
+    percent: 35,
+    sheetTab: targetSheet,
+    status: 'reading',
+    detailMessage: 'Memuat data nota yang ada untuk validasi anti-duplikasi...',
+  });
+
   // Read existing rows to check for duplicate order numbers and calculate sequential numbering
   let existingValues: any[][] = [];
   try {
@@ -700,6 +847,14 @@ export async function appendProcessedNotas(
     if (isAuthExpiredError(e)) throw e;
     console.warn('Could not read existing sheet rows for duplicate check:', e);
   }
+
+  onProgress?.({
+    currentStage: 'Memeriksa duplikasi nota & menyusun nomor urut...',
+    stageIndex: 3,
+    percent: 50,
+    status: 'validating',
+    detailMessage: 'Memeriksa nomor nota yang sudah tercatat di Google Sheet...',
+  });
 
   const existingOrderSet = new Set<string>();
   let existingDataRowsCount = 0;
@@ -755,26 +910,71 @@ export async function appendProcessedNotas(
     }
   }
 
+  onProgress?.({
+    currentStage: 'Menyiapkan batch pengunggahan...',
+    stageIndex: 4,
+    percent: 55,
+    newItemsAdded: rowsToAppend.length,
+    duplicateItemsSkipped: skippedOrders.length,
+    status: 'uploading',
+    detailMessage: `${rowsToAppend.length} nota baru valid (${skippedOrders.length} duplikat dilewati)`,
+  });
+
   if (rowsToAppend.length > 0) {
-    const range = `${encodeURIComponent(targetSheet)}!A1`;
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    const CHUNK_SIZE = 50;
+    const totalChunks = Math.ceil(rowsToAppend.length / CHUNK_SIZE);
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        values: rowsToAppend,
-      }),
-    });
+    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+      const start = chunkIdx * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, rowsToAppend.length);
+      const chunkRows = rowsToAppend.slice(start, end);
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Gagal menyimpan data nota ke Google Sheet (${sheetTab}): ${res.status} - ${err}`);
+      const chunkPercent = Math.round(55 + ((chunkIdx + 1) / totalChunks) * 35);
+
+      onProgress?.({
+        currentStage: `Mengunggah batch ${chunkIdx + 1} dari ${totalChunks}...`,
+        stageIndex: 4,
+        percent: chunkPercent,
+        currentBatch: chunkIdx + 1,
+        totalBatches: totalChunks,
+        processedItems: end,
+        newItemsAdded: rowsToAppend.length,
+        duplicateItemsSkipped: skippedOrders.length,
+        status: 'uploading',
+        detailMessage: `Mengunggah baris ${start + 1}-${end} dari ${rowsToAppend.length} nota...`,
+      });
+
+      const range = `${encodeURIComponent(targetSheet)}!A1`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          values: chunkRows,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Gagal menyimpan data nota ke Google Sheet (${sheetTab}): ${res.status} - ${err}`);
+      }
     }
   }
+
+  onProgress?.({
+    currentStage: 'Sinkronisasi Nota Selesai & Terverifikasi!',
+    stageIndex: 5,
+    percent: 100,
+    newItemsAdded: rowsToAppend.length,
+    duplicateItemsSkipped: skippedOrders.length,
+    processedItems: rowsToAppend.length,
+    status: 'success',
+    detailMessage: `Sukses menyimpan ${rowsToAppend.length} nota ke sheet "${targetSheet}"!`,
+  });
 
   return {
     added: rowsToAppend.length,
