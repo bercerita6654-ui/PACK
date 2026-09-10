@@ -30,6 +30,11 @@ import { PackedOrder, PlatformType, ProcessedNota } from '../types';
 import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
 import { PackingSheetHistory } from './PackingSheetHistory';
+import {
+  isNotaDelayed,
+  DEFAULT_DELAY_THRESHOLD_MINUTES,
+  formatThresholdLabel,
+} from '../utils/notaDelay';
 
 interface PackingSectionProps {
   orders: PackedOrder[];
@@ -52,6 +57,7 @@ interface PackingSectionProps {
   lastSyncTimestamp?: number;
   processedNotas?: ProcessedNota[];
   onNavigateToNotas?: () => void;
+  delayThreshold?: number;
 }
 
 type ScanMode = 'single' | 'batch_paste';
@@ -81,9 +87,16 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
   lastSyncTimestamp,
   processedNotas = [],
   onNavigateToNotas,
+  delayThreshold = DEFAULT_DELAY_THRESHOLD_MINUTES,
 }) => {
   // Navigation between Single Rapid Scan and Batch Paste
   const [scanMode, setScanMode] = useState<ScanMode>('single');
+
+  // Count delayed pending notas
+  const delayedNotasCount = useMemo(() => {
+    const now = Date.now();
+    return processedNotas.filter((n) => isNotaDelayed(n, delayThreshold, now)).length;
+  }, [processedNotas, delayThreshold]);
 
   // Single Scanner state
   const [scanInput, setScanInput] = useState<string>('');
@@ -484,6 +497,15 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                   </span>
                 )}
               </p>
+
+              {delayedNotasCount > 0 && (
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-100/90 border border-rose-300 text-rose-900 rounded-lg text-xs font-bold animate-pulse">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span>
+                    Perhatian: Terdapat {delayedNotasCount} nota tertunda &gt;{formatThresholdLabel(delayThreshold ?? DEFAULT_DELAY_THRESHOLD_MINUTES)} belum di-packing!
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

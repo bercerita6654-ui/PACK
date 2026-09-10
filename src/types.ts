@@ -23,6 +23,7 @@ export interface ProcessedNota {
   isPacked?: boolean;
   packedAt?: string;
   notes?: string;
+  createdAt?: number; // epoch ms e.g. Date.now()
 }
 
 export interface ExpeditionConfig {

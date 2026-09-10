@@ -22,6 +22,7 @@ interface HeaderProps {
   packingCount: number;
   notaCount?: number;
   pendingNotaCount?: number;
+  delayedNotaCount?: number;
   user: User | null;
   activeSpreadsheet: ActiveSpreadsheet | null;
   onOpenGoogleDriveModal: () => void;
@@ -38,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   packingCount,
   notaCount = 0,
   pendingNotaCount = 0,
+  delayedNotaCount = 0,
   user,
   activeSpreadsheet,
   onOpenGoogleDriveModal,
@@ -210,12 +212,19 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Nota Diproses</span>
             <span
               className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
-                activeTab === 'nota'
+                delayedNotaCount > 0
+                  ? 'bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs'
+                  : activeTab === 'nota'
                   ? 'bg-amber-100 text-amber-900'
                   : 'bg-slate-200/70 text-slate-600'
               }`}
             >
-              {pendingNotaCount > 0 ? (
+              {delayedNotaCount > 0 ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping inline-block" />
+                  <span>{delayedNotaCount} Tertunda!</span>
+                </>
+              ) : pendingNotaCount > 0 ? (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block" />
                   <span>{pendingNotaCount} Pending</span>

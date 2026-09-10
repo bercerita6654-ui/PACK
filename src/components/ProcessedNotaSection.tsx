@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   FileText,
   ScanBarcode,
@@ -10,6 +10,7 @@ import {
   Copy,
   Check,
   AlertCircle,
+  AlertTriangle,
   FileSpreadsheet,
   Layers,
   Sparkles,
@@ -21,11 +22,30 @@ import {
   Share2,
   ArrowRight,
   Filter,
+  LogIn,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProcessedNota, PlatformType } from '../types';
 import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
+import {
+  getNotaElapsedMinutes,
+  formatElapsedDuration,
+  isNotaDelayed,
+  DEFAULT_DELAY_THRESHOLD_MINUTES,
+  DELAY_THRESHOLD_OPTIONS,
+  formatThresholdLabel,
+  parseNotaDateTime,
+} from '../utils/notaDelay';
+import {
+  fetchProcessedNotasHistory,
+  isAuthExpiredError,
+  invalidateStoredToken,
+} from '../services/googleWorkspace';
+import {
+  ProcessedNotaSheetHistory,
+  SheetProcessedNotaRow,
+} from './ProcessedNotaSheetHistory';
 
 interface ProcessedNotaSectionProps {
   notas: ProcessedNota[];
@@ -47,13 +67,17 @@ interface ProcessedNotaSectionProps {
   accessToken?: string | null;
   userEmail?: string;
   onLoginGoogle?: () => void;
+  onTokenExpired?: () => void;
+  lastSyncTimestamp?: number;
   targetSpreadsheetId?: string;
   targetSheetTab?: string;
   onNavigateToPacking?: () => void;
+  delayThreshold?: number;
+  onDelayThresholdChange?: (threshold: number) => void;
 }
 
 type ScanMode = 'single' | 'batch_paste';
-type StatusFilter = 'all' | 'pending' | 'packed';
+type StatusFilter = 'all' | 'pending' | 'overdue' | 'packed';
 
 export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   notas,
@@ -68,9 +92,13 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   accessToken,
   userEmail,
   onLoginGoogle,
+  onTokenExpired,
+  lastSyncTimestamp,
   targetSpreadsheetId = '1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI',
   targetSheetTab = 'Nota Diproses',
   onNavigateToPacking,
+  delayThreshold,
+  onDelayThresholdChange,
 }) => {
   const [scanMode, setScanMode] = useState<ScanMode>('single');
   const [scanInput, setScanInput] = useState<string>('');
@@ -81,6 +109,42 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState<boolean>(false);
+
+  // Local fallback threshold if not provided from parent (default: 1 hari / 1440 menit)
+  const [localThreshold, setLocalThreshold] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('packTrack_notaDelayThreshold');
+      const parsed = saved ? parseInt(saved, 10) : NaN;
+      if (isNaN(parsed) || parsed < 120) {
+        return DEFAULT_DELAY_THRESHOLD_MINUTES;
+      }
+      return parsed;
+    } catch {
+      return DEFAULT_DELAY_THRESHOLD_MINUTES;
+    }
+  });
+
+  const currentThreshold = delayThreshold ?? localThreshold;
+
+  const handleThresholdChange = (val: number) => {
+    if (onDelayThresholdChange) {
+      onDelayThresholdChange(val);
+    } else {
+      setLocalThreshold(val);
+      localStorage.setItem('packTrack_notaDelayThreshold', val.toString());
+    }
+    showToast(`Batas waktu pengingat diatur ke ${formatThresholdLabel(val)}.`, 'info');
+  };
+
+  // Clock tick state to update relative elapsed times periodically
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Batch paste state
   const [batchText, setBatchText] = useState<string>('');
@@ -110,17 +174,181 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     return detectPlatform(scanInput.trim());
   }, [scanInput, selectedPlatform]);
 
+  // Google Sheet state for top-level live dashboard
+  const [sheetRows, setSheetRows] = useState<SheetProcessedNotaRow[]>([]);
+  const [sheetLoading, setSheetLoading] = useState<boolean>(false);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+  const [sheetLastFetchedAt, setSheetLastFetchedAt] = useState<Date | null>(null);
+  const [sheetResolvedTab, setSheetResolvedTab] = useState<string>(targetSheetTab);
+  const [sheetStatusFilter, setSheetStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
+
+  // Fetch data from Google Sheets
+  const loadSheetData = useCallback(async () => {
+    if (!accessToken) {
+      setSheetRows([]);
+      setSheetError(null);
+      return;
+    }
+
+    setSheetLoading(true);
+    setSheetError(null);
+
+    try {
+      const result = await fetchProcessedNotasHistory(accessToken, targetSpreadsheetId, targetSheetTab);
+      setSheetResolvedTab(result.tabName);
+
+      // Detect header columns dynamically
+      let colOrder = 1;
+      let colPlatform = 2;
+      let colDate = 3;
+      let colTime = 4;
+      let colStatus = 5;
+      let colPackTime = 6;
+      let colNotes = 7;
+
+      if (result.headers && result.headers.length > 0) {
+        result.headers.forEach((h, idx) => {
+          const lower = h.trim().toLowerCase();
+          if (lower.includes('nota') || lower.includes('pesanan') || lower.includes('order')) {
+            colOrder = idx;
+          } else if (lower.includes('platform')) {
+            colPlatform = idx;
+          } else if (lower.includes('tanggal')) {
+            colDate = idx;
+          } else if (lower.includes('waktu admin') || lower.includes('jam admin') || lower === 'waktu') {
+            colTime = idx;
+          } else if (lower.includes('status')) {
+            colStatus = idx;
+          } else if (lower.includes('waktu packing') || lower.includes('jam packing')) {
+            colPackTime = idx;
+          } else if (lower.includes('catatan') || lower.includes('notes')) {
+            colNotes = idx;
+          }
+        });
+      }
+
+      const parsed: SheetProcessedNotaRow[] = [];
+      result.rows.forEach((r, idx) => {
+        if (!r || r.length === 0 || !r.some((cell) => cell && cell.trim() !== '')) {
+          return;
+        }
+
+        const no = r[0] ? r[0].trim() : String(idx + 1);
+        const orderNumber = r[colOrder] ? r[colOrder].trim().toUpperCase() : '';
+        const rawPlatform = r[colPlatform] ? r[colPlatform].trim() : '';
+        const adminDate = r[colDate] ? r[colDate].trim() : '-';
+        const adminTime = r[colTime] ? r[colTime].trim() : '-';
+        const rawStatus = r[colStatus] ? r[colStatus].trim() : 'Belum Packing';
+        const packingTime = r[colPackTime] ? r[colPackTime].trim() : '-';
+        const notes = r[colNotes] ? r[colNotes].trim() : '';
+
+        if (!orderNumber) return;
+
+        // Platform deduction
+        let platform: PlatformType = 'Shopee';
+        if (
+          rawPlatform.toLowerCase().includes('tokopedia') ||
+          rawPlatform.toLowerCase().includes('tiktok') ||
+          (orderNumber.length >= 16 && /^\d+$/.test(orderNumber))
+        ) {
+          platform = 'Tokopedia/TikTok';
+        }
+
+        // Packing status deduction
+        const isPacked =
+          rawStatus.toLowerCase().includes('selesai') ||
+          rawStatus.toLowerCase().includes('sudah') ||
+          rawStatus.toLowerCase().includes('packed') ||
+          (packingTime !== '-' && packingTime !== '' && !packingTime.toLowerCase().includes('belum'));
+
+        parsed.push({
+          rowNumber: idx + 2,
+          no,
+          orderNumber,
+          platform,
+          adminDate,
+          adminTime,
+          isPacked,
+          packingStatus: isPacked ? 'Selesai Packing' : 'Belum Packing',
+          packingTime,
+          notes,
+        });
+      });
+
+      setSheetRows(parsed);
+      setSheetLastFetchedAt(new Date());
+    } catch (err: any) {
+      if (isAuthExpiredError(err)) {
+        console.warn('Google Sheets token expired in ProcessedNotaSection. Invalidating token.');
+        invalidateStoredToken();
+        if (onTokenExpired) onTokenExpired();
+        setSheetError('Sesi Google Sheets telah kedaluwarsa. Silakan perbarui sesi login Google Anda.');
+      } else {
+        console.error('Error fetching sheet notas in ProcessedNotaSection:', err);
+        setSheetError(err.message || 'Gagal membaca riwayat nota dari Google Sheet.');
+      }
+    } finally {
+      setSheetLoading(false);
+    }
+  }, [accessToken, targetSpreadsheetId, targetSheetTab, onTokenExpired]);
+
+  // Sync / fetch on mount or when accessToken/lastSyncTimestamp change
+  useEffect(() => {
+    if (accessToken) {
+      loadSheetData();
+    }
+  }, [accessToken, lastSyncTimestamp, loadSheetData]);
+
+  // Google Sheet statistics for the top dashboard
+  const sheetTotalCount = sheetRows.length;
+  const sheetPackedCount = useMemo(() => sheetRows.filter((r) => r.isPacked).length, [sheetRows]);
+  const sheetPendingCount = sheetTotalCount - sheetPackedCount;
+  const sheetOverdueCount = useMemo(() => {
+    return sheetRows.filter((r) => {
+      if (r.isPacked) return false;
+      const d = parseNotaDateTime(r.adminDate, r.adminTime);
+      if (!d) return false;
+      const elapsed = Math.floor((nowMs - d.getTime()) / 60000);
+      return elapsed >= currentThreshold;
+    }).length;
+  }, [sheetRows, nowMs, currentThreshold]);
+
+  const sheetShopeeCount = useMemo(() => sheetRows.filter((r) => r.platform === 'Shopee').length, [sheetRows]);
+  const sheetTokpedCount = useMemo(() => sheetRows.filter((r) => r.platform === 'Tokopedia/TikTok').length, [sheetRows]);
+  const sheetProgressPercent = sheetTotalCount > 0 ? Math.round((sheetPackedCount / sheetTotalCount) * 100) : 0;
+
+  const handleFilterAndScrollSheet = (status: 'all' | 'pending' | 'overdue' | 'packed') => {
+    setSheetStatusFilter(status);
+    const element = document.getElementById('section-nota-sheet-history');
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   // Calculations for stats
   const totalNotas = notas.length;
   const packedCount = useMemo(() => notas.filter((n) => n.isPacked).length, [notas]);
   const pendingCount = totalNotas - packedCount;
   const progressPercent = totalNotas > 0 ? Math.round((packedCount / totalNotas) * 100) : 0;
 
+  // Stale/Delayed pending notas analytics
+  const delayedNotas = useMemo(() => {
+    return notas.filter((n) => isNotaDelayed(n, currentThreshold, nowMs));
+  }, [notas, currentThreshold, nowMs]);
+
+  const delayedCount = delayedNotas.length;
+
+  const maxDelayMinutes = useMemo(() => {
+    if (delayedNotas.length === 0) return 0;
+    return Math.max(...delayedNotas.map((n) => getNotaElapsedMinutes(n, nowMs)));
+  }, [delayedNotas, nowMs]);
+
   // Filtered notas list
   const filteredNotas = useMemo(() => {
     return notas.filter((nota) => {
       // Status filter
       if (statusFilter === 'pending' && nota.isPacked) return false;
+      if (statusFilter === 'overdue' && !isNotaDelayed(nota, currentThreshold, nowMs)) return false;
       if (statusFilter === 'packed' && !nota.isPacked) return false;
 
       // Platform filter
@@ -137,7 +365,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
 
       return true;
     });
-  }, [notas, statusFilter, platformFilter, searchQuery]);
+  }, [notas, statusFilter, platformFilter, searchQuery, currentThreshold, nowMs]);
 
   // Single scan submission
   const handleProcessScan = (rawCode?: string) => {
@@ -276,6 +504,44 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     }
   };
 
+  // Copy delayed / overdue notas specifically with elapsed duration
+  const handleCopyDelayedNotas = () => {
+    if (delayedNotas.length === 0) {
+      showToast('Tidak ada nota yang tertunda melebihi batas waktu!', 'info');
+      return;
+    }
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const lines = [
+      `⚠️ *PERINGATAN: ${delayedNotas.length} NOTA BELUM DI-PACKING (> ${formatThresholdLabel(currentThreshold).toUpperCase()})*`,
+      `📅 Tanggal: ${dateStr}`,
+      `⏰ Waktu Cek: ${now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
+      `----------------------------------------`,
+      ...delayedNotas.map((item, idx) => {
+        const elapsed = getNotaElapsedMinutes(item, nowMs);
+        return `${idx + 1}. *${item.orderNumber}* (${item.platform}) - Scan Admin: ${item.timestamp} (⏱️ Terlambat: +${formatElapsedDuration(elapsed)})`;
+      }),
+      `----------------------------------------`,
+      `⚠️ Mohon tim packing untuk segera memprioritaskan dan menyelesaikan paket-paket tertunda di atas! Terima kasih 🙏`,
+    ];
+
+    const message = lines.join('\n');
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(message);
+      showToast(
+        `${delayedNotas.length} nota tertunda berhasil disalin untuk WhatsApp tim packing!`,
+        'warning'
+      );
+    }
+  };
+
   // Export CSV
   const handleExportCSV = () => {
     if (notas.length === 0) {
@@ -319,6 +585,33 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     showToast('File CSV Nota Diproses berhasil diunduh.', 'success');
+  };
+
+  // Import items from Google Sheet into active scan session
+  const handleImportSheetNotas = (
+    items: { orderNumber: string; platform: PlatformType; notes?: string }[]
+  ) => {
+    if (items.length === 0) return;
+
+    if (onAddNotasBatch) {
+      const res = onAddNotasBatch(items, true);
+      if (res.added > 0) {
+        showToast(`${res.added} nota dari Google Sheet berhasil diimpor ke sesi aktif.`, 'success');
+      } else {
+        showToast('Semua nota dari sheet sudah ada di sesi scan aktif.', 'info');
+      }
+    } else {
+      let added = 0;
+      items.forEach((it) => {
+        const res = onAddNota(it.orderNumber, it.platform, it.notes);
+        if (res.success) added++;
+      });
+      if (added > 0) {
+        showToast(`${added} nota dari Google Sheet dimasukkan ke sesi aktif.`, 'success');
+      } else {
+        showToast('Semua nota dari sheet sudah ada di sesi scan aktif.', 'info');
+      }
+    }
   };
 
   return (
@@ -376,7 +669,347 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
         </div>
       </div>
 
-      {/* 4 Summary Metric Cards */}
+      {/* ========================================================================= */}
+      {/* DASHBOARD INFO GOOGLE SHEET: Belum Packing & Sudah Packing (PALING ATAS) */}
+      {/* ========================================================================= */}
+      <div
+        id="dashboard-sheet-summary-top"
+        className="bg-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-lg border border-slate-700/80 relative overflow-hidden"
+      >
+        {/* Subtle background glow accents */}
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/4 -mb-10 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Dashboard Header Bar */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800 relative z-10">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="p-3 bg-emerald-500/20 border border-emerald-400/30 text-emerald-400 rounded-2xl shrink-0 shadow-inner">
+              <FileSpreadsheet className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
+                  Status Packing (Data Google Sheets)
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  Tab: {sheetResolvedTab}
+                </span>
+                {accessToken ? (
+                  <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Terhubung</span>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span>Perlu Login</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-1.5">
+                <span>Database utama di Google Sheets:</span>
+                <code className="bg-slate-800 text-emerald-300 px-1.5 py-0.5 rounded text-[11px] font-mono border border-slate-700">
+                  {targetSpreadsheetId}
+                </code>
+                {sheetLastFetchedAt && (
+                  <span className="text-slate-400">• Diperbarui: {sheetLastFetchedAt.toLocaleTimeString('id-ID')}</span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Action buttons at top dashboard */}
+          <div className="flex flex-wrap items-center gap-2">
+            {accessToken ? (
+              <button
+                type="button"
+                id="btn-refresh-sheet-top"
+                onClick={loadSheetData}
+                disabled={sheetLoading}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-600/70 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
+                title="Segarkan data nota langsung dari Google Sheets"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${sheetLoading ? 'animate-spin' : ''}`} />
+                <span>{sheetLoading ? 'Memuat...' : 'Segarkan Data'}</span>
+              </button>
+            ) : (
+              onLoginGoogle && (
+                <button
+                  type="button"
+                  id="btn-login-google-top"
+                  onClick={onLoginGoogle}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>{userEmail ? 'Perbarui Sesi Google' : 'Hubungkan Google Sheets'}</span>
+                </button>
+              )
+            )}
+
+            <a
+              href={`https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+              title="Buka file Google Spreadsheet di tab baru"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Buka Google Sheets ↗</span>
+            </a>
+
+            <button
+              type="button"
+              id="btn-jump-to-sheet-table"
+              onClick={() => handleFilterAndScrollSheet('all')}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all"
+              title="Gulir langsung ke tabel rincian Google Sheets"
+            >
+              <span>Lihat Tabel ↓</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Dashboard 4 Core Stat Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-5 relative z-10">
+          {/* Card 1: BELUM PACKING (Highlighted Primary Focus) */}
+          <div
+            id="card-sheet-pending"
+            onClick={() => handleFilterAndScrollSheet('pending')}
+            className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-200 relative overflow-hidden group ${
+              sheetStatusFilter === 'pending'
+                ? 'bg-amber-950/70 border-amber-400 ring-2 ring-amber-400/50'
+                : 'bg-amber-950/40 hover:bg-amber-950/60 border-amber-500/40'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-amber-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                Belum Packing
+              </span>
+              <span className="px-2 py-0.5 bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-full text-[10px] font-black">
+                {sheetTotalCount > 0 ? `${Math.round((sheetPendingCount / sheetTotalCount) * 100)}%` : '0%'}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl sm:text-4xl font-black text-amber-400 tracking-tight">
+                {sheetLoading ? '...' : sheetPendingCount}
+              </span>
+              <span className="text-xs text-amber-200/80 font-medium">Nota</span>
+            </div>
+            <p className="text-[11px] text-amber-300/80 mt-2 flex items-center justify-between">
+              <span>Menunggu dipacking</span>
+              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform">
+                Filter Tabel →
+              </span>
+            </p>
+          </div>
+
+          {/* Card 2: SUDAH PACKING (Success Primary Focus) */}
+          <div
+            id="card-sheet-packed"
+            onClick={() => handleFilterAndScrollSheet('packed')}
+            className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-200 relative overflow-hidden group ${
+              sheetStatusFilter === 'packed'
+                ? 'bg-emerald-950/70 border-emerald-400 ring-2 ring-emerald-400/50'
+                : 'bg-emerald-950/40 hover:bg-emerald-950/60 border-emerald-500/40'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-emerald-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                Sudah Packing
+              </span>
+              <span className="px-2 py-0.5 bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 rounded-full text-[10px] font-black">
+                {sheetProgressPercent}% Selesai
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl sm:text-4xl font-black text-emerald-400 tracking-tight">
+                {sheetLoading ? '...' : sheetPackedCount}
+              </span>
+              <span className="text-xs text-emerald-200/80 font-medium">Nota</span>
+            </div>
+            {/* Progress bar */}
+            <div className="w-full bg-emerald-950 rounded-full h-1.5 mt-2.5 overflow-hidden border border-emerald-800/60">
+              <div
+                className="bg-emerald-400 h-1.5 rounded-full transition-all duration-500"
+                style={{ width: `${sheetProgressPercent}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-emerald-300/80 mt-2 flex items-center justify-between">
+              <span>Telah selesai dipacking</span>
+              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform">
+                Filter Tabel →
+              </span>
+            </p>
+          </div>
+
+          {/* Card 3: TERTUNDA > 1 HARI (Alert Overdue from Sheet) */}
+          <div
+            id="card-sheet-overdue"
+            onClick={() => handleFilterAndScrollSheet('overdue')}
+            className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-200 relative overflow-hidden group ${
+              sheetStatusFilter === 'overdue'
+                ? 'bg-rose-950/80 border-rose-400 ring-2 ring-rose-400/50'
+                : sheetOverdueCount > 0
+                ? 'bg-rose-950/50 hover:bg-rose-950/70 border-rose-500/50'
+                : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-rose-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <AlertTriangle className={`w-3.5 h-3.5 ${sheetOverdueCount > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-400'}`} />
+                Tertunda &gt;{formatThresholdLabel(currentThreshold)}
+              </span>
+              {sheetOverdueCount > 0 && (
+                <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black animate-pulse">
+                  Perlu Cek!
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-3xl sm:text-4xl font-black tracking-tight ${sheetOverdueCount > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
+                {sheetLoading ? '...' : sheetOverdueCount}
+              </span>
+              <span className="text-xs text-slate-400 font-medium">Nota</span>
+            </div>
+            <p className="text-[11px] text-rose-300/80 mt-2 flex items-center justify-between">
+              <span>{sheetOverdueCount > 0 ? 'Melebihi batas waktu' : 'Semua tepat waktu'}</span>
+              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform">
+                Filter Tabel →
+              </span>
+            </p>
+          </div>
+
+          {/* Card 4: TOTAL NOTA DI SHEET */}
+          <div
+            id="card-sheet-total"
+            onClick={() => handleFilterAndScrollSheet('all')}
+            className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-200 relative overflow-hidden group ${
+              sheetStatusFilter === 'all'
+                ? 'bg-indigo-950/70 border-indigo-400 ring-2 ring-indigo-400/50'
+                : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-slate-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                Total di Sheet
+              </span>
+              <span className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded-full text-[10px] font-bold">
+                Semua
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+                {sheetLoading ? '...' : sheetTotalCount}
+              </span>
+              <span className="text-xs text-slate-400 font-medium">Nota</span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-2 flex items-center justify-between">
+              <span>Shopee: {sheetShopeeCount} • Tokped: {sheetTokpedCount}</span>
+              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform">
+                Lihat Semua →
+              </span>
+            </p>
+          </div>
+        </div>
+
+        {/* Error notification if any */}
+        {sheetError && (
+          <div className="mt-4 p-3 bg-rose-900/60 border border-rose-700 rounded-xl text-xs text-rose-200 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{sheetError}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Visual Alert Reminder Banner for Delayed / Stale Notas */}
+      {delayedCount > 0 && (
+        <div className="bg-rose-50/90 border-2 border-rose-300 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="p-3 bg-rose-500 text-white rounded-xl shrink-0 shadow-xs relative">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-600"></span>
+              </span>
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-rose-800 bg-rose-200/80 px-2 py-0.5 rounded-md">
+                  Peringatan Keterlambatan Packing
+                </span>
+                <span className="text-xs text-rose-700 font-semibold">
+                  Batas Waktu: {formatThresholdLabel(currentThreshold)}
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-black text-rose-950 mt-1">
+                Ada {delayedCount} nota belum di-scan packing melebihi {formatThresholdLabel(currentThreshold)}!
+              </h3>
+              <p className="text-xs text-rose-800 mt-0.5">
+                Nota terlama sudah menunggu{' '}
+                <strong className="font-bold underline text-rose-950">
+                  +{formatElapsedDuration(maxDelayMinutes)}
+                </strong>{' '}
+                sejak di-scan oleh admin. Segera hubungi atau ingatkan tim packing.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto shrink-0">
+            <button
+              type="button"
+              id="btn-filter-delayed-notas"
+              onClick={() => setStatusFilter('overdue')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
+                statusFilter === 'overdue'
+                  ? 'bg-rose-700 text-white ring-2 ring-rose-400'
+                  : 'bg-white hover:bg-rose-100 text-rose-800 border border-rose-200'
+              }`}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span>Lihat {delayedCount} Nota Tertunda</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-copy-delayed-wa-banner"
+              onClick={handleCopyDelayedNotas}
+              className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs"
+              title="Salin daftar nota tertunda untuk dikirim via WhatsApp ke tim packing"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Salin WA Tim Packing</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sesi Scan Nota Baru (Admin) */}
+      <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Sesi Scan Nota Baru (Admin)
+          </span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+            {totalNotas} nota di antrean lokal
+          </span>
+        </div>
+        {totalNotas > 0 && onSyncGoogleSheet && (
+          <button
+            type="button"
+            onClick={onSyncGoogleSheet}
+            disabled={isSyncing}
+            className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 transition-colors"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>Simpan Antrean ke Google Sheet ({totalNotas}) →</span>
+          </button>
+        )}
+      </div>
+
+      {/* 4 Summary Metric Cards (Sesi Scan Lokal) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Total Nota */}
         <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-slate-100">
@@ -391,7 +1024,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           </div>
         </div>
 
-        {/* Belum Packing (Pending) - High Contrast Alert */}
+        {/* Belum Packing (Pending) */}
         <div className="bg-amber-50/70 border border-amber-200 p-4 sm:p-5 rounded-2xl shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
@@ -414,12 +1047,67 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           </div>
         </div>
 
-        {/* Sudah Packing (Selesai) */}
-        <div className="bg-emerald-50/70 border border-emerald-200 p-4 sm:p-5 rounded-2xl shadow-xs">
-          <div className="text-xs font-bold text-emerald-900 uppercase tracking-wider mb-1">
-            Sudah Dipacking
+        {/* Nota Tertunda (> threshold) - High Attention Card */}
+        <div
+          onClick={() => {
+            if (delayedCount > 0) setStatusFilter('overdue');
+          }}
+          className={`p-4 sm:p-5 rounded-2xl shadow-xs relative overflow-hidden transition-all ${
+            delayedCount > 0
+              ? 'bg-rose-50/90 border-2 border-rose-300 cursor-pointer hover:bg-rose-100/80'
+              : 'bg-slate-50/80 border border-slate-200'
+          }`}
+          title={delayedCount > 0 ? 'Klik untuk memfilter nota tertunda' : undefined}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span
+              className={`text-xs font-bold uppercase tracking-wider ${
+                delayedCount > 0 ? 'text-rose-900' : 'text-slate-500'
+              }`}
+            >
+              Tertunda (&gt;{formatThresholdLabel(currentThreshold)})
+            </span>
+            {delayedCount > 0 && (
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+              </span>
+            )}
           </div>
           <div className="flex items-baseline justify-between">
+            <span
+              className={`text-2xl sm:text-3xl font-black leading-none ${
+                delayedCount > 0 ? 'text-rose-700' : 'text-slate-600'
+              }`}
+            >
+              {delayedCount}
+            </span>
+            <span
+              className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                delayedCount > 0
+                  ? 'bg-rose-200/90 text-rose-900 animate-pulse'
+                  : 'bg-slate-200/70 text-slate-600'
+              }`}
+            >
+              {delayedCount > 0 ? '⚠️ Butuh Perhatian' : '✓ Tepat Waktu'}
+            </span>
+          </div>
+          {delayedCount > 0 && maxDelayMinutes > 0 && (
+            <div className="text-[10px] text-rose-700 font-semibold mt-1 truncate">
+              Terlama: +{formatElapsedDuration(maxDelayMinutes)}
+            </div>
+          )}
+        </div>
+
+        {/* Sudah Packing (Selesai) with Progress Bar */}
+        <div className="bg-emerald-50/70 border border-emerald-200 p-4 sm:p-5 rounded-2xl shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
+              Sudah Dipacking
+            </span>
+            <span className="text-xs font-extrabold text-emerald-800">{progressPercent}%</span>
+          </div>
+          <div className="flex items-baseline justify-between mb-2">
             <span className="text-2xl sm:text-3xl font-black text-emerald-800 leading-none">
               {packedCount}
             </span>
@@ -427,26 +1115,44 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
               {progressPercent}% Selesai
             </span>
           </div>
-        </div>
-
-        {/* Progress Bar & Status */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Kemajuan Packing
-            </span>
-            <span className="text-xs font-extrabold text-indigo-700">{progressPercent}%</span>
-          </div>
-          <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+          <div className="w-full bg-emerald-100/70 h-2 rounded-full overflow-hidden">
             <div
               className="bg-emerald-500 h-full rounded-full transition-all duration-500 ease-out"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <div className="text-[11px] text-slate-400 mt-1 flex justify-between">
-            <span>{packedCount} Selesai</span>
-            <span>{pendingCount} Pending</span>
+        </div>
+      </div>
+
+      {/* Threshold Configuration Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-100 px-4 py-3 rounded-2xl shadow-xs text-xs">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
+            <Clock className="w-4 h-4" />
           </div>
+          <div>
+            <span className="font-bold text-slate-800">Batas Waktu Pengingat:</span>
+            <span className="text-slate-500 ml-1.5 hidden sm:inline">
+              Tandai peringatan jika nota belum di-scan packing setelah:
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {DELAY_THRESHOLD_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => handleThresholdChange(opt.value)}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                currentThreshold === opt.value
+                  ? 'bg-amber-600 text-white shadow-2xs ring-2 ring-amber-300'
+                  : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -684,6 +1390,27 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             </button>
             <button
               type="button"
+              id="btn-filter-tab-overdue"
+              onClick={() => setStatusFilter('overdue')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                statusFilter === 'overdue'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : delayedCount > 0
+                  ? 'bg-rose-100 text-rose-800 hover:bg-rose-200/80'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <AlertTriangle className={`w-3.5 h-3.5 ${delayedCount > 0 && statusFilter !== 'overdue' ? 'text-rose-600' : ''}`} />
+              <span>Tertunda &gt;{formatThresholdLabel(currentThreshold)} ({delayedCount})</span>
+              {delayedCount > 0 && statusFilter !== 'overdue' && (
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => setStatusFilter('packed')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
                 statusFilter === 'packed'
@@ -738,8 +1465,22 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
               title="Salin daftar nomor nota yang belum dipacking untuk WhatsApp tim packing"
             >
               <Share2 className="w-3.5 h-3.5" />
-              <span>Salin Nota Belum Packing ({pendingCount})</span>
+              <span>Salin Belum Packing ({pendingCount})</span>
             </button>
+
+            {/* Quick Copy Delayed Notas specifically */}
+            {delayedCount > 0 && (
+              <button
+                type="button"
+                id="btn-copy-delayed-toolbar"
+                onClick={handleCopyDelayedNotas}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-200 shadow-2xs transition-all"
+                title="Salin daftar khusus nota tertunda untuk dikirim ke tim packing via WhatsApp"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                <span>Salin {delayedCount} Nota Tertunda (WA)</span>
+              </button>
+            )}
 
             {/* Sync to Google Sheet */}
             {onSyncGoogleSheet && (
@@ -770,6 +1511,16 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
               <Download className="w-3.5 h-3.5" />
               <span>Ekspor CSV</span>
             </button>
+
+            {/* Jump to Google Sheet History */}
+            <a
+              href="#section-nota-sheet-history"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold transition-all"
+              title="Lihat hasil dan riwayat scan nota yang tersimpan di Google Sheet"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Hasil di Sheet ↓</span>
+            </a>
           </div>
 
           {/* Reset / Clear List */}
@@ -800,104 +1551,144 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs font-medium">
               {filteredNotas.length > 0 ? (
-                filteredNotas.map((nota, index) => (
-                  <tr
-                    key={nota.id}
-                    className={`hover:bg-slate-50/70 transition-colors ${
-                      nota.isPacked ? 'bg-emerald-50/20' : 'bg-amber-50/10'
-                    }`}
-                  >
-                    <td className="py-3 px-4 text-center text-slate-400 font-mono text-[11px]">
-                      {index + 1}
-                    </td>
+                filteredNotas.map((nota, index) => {
+                  const elapsedMinutes = getNotaElapsedMinutes(nota, nowMs);
+                  const isOverdue = !nota.isPacked && elapsedMinutes >= currentThreshold;
 
-                    {/* Order Number with Copy */}
-                    <td className="py-3 px-4 font-mono font-bold text-slate-900 tracking-wide">
-                      <div className="flex items-center gap-2">
-                        <span>{nota.orderNumber}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(nota.orderNumber, nota.id)}
-                          className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-700 rounded-md transition-all"
-                          title="Salin nomor"
-                        >
-                          {copiedId === nota.id ? (
-                            <Check className="w-3 h-3 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
+                  return (
+                    <tr
+                      key={nota.id}
+                      className={`transition-colors ${
+                        isOverdue
+                          ? 'bg-rose-50/80 hover:bg-rose-100/80 border-l-4 border-l-rose-500 shadow-2xs'
+                          : nota.isPacked
+                          ? 'bg-emerald-50/20 hover:bg-slate-50'
+                          : 'bg-amber-50/10 hover:bg-slate-50'
+                      }`}
+                    >
+                      <td className="py-3 px-4 text-center text-slate-400 font-mono text-[11px]">
+                        <div>{index + 1}</div>
+                        {isOverdue && (
+                          <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-200 text-rose-900 uppercase">
+                            Late
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Order Number with Copy */}
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900 tracking-wide">
+                        <div className="flex items-center gap-2">
+                          {isOverdue && (
+                            <AlertTriangle
+                              className="w-4 h-4 text-rose-600 animate-pulse shrink-0"
+                              title={`Tertunda > ${formatThresholdLabel(currentThreshold)} (+${formatElapsedDuration(elapsedMinutes)})`}
+                            />
                           )}
-                        </button>
-                      </div>
-                    </td>
-
-                    {/* Platform Badge */}
-                    <td className="py-3 px-4">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-md font-bold text-[11px] ${getPlatformColor(
-                          nota.platform
-                        )}`}
-                      >
-                        {nota.platform}
-                      </span>
-                    </td>
-
-                    {/* Admin Timestamp */}
-                    <td className="py-3 px-4 text-slate-600">
-                      <div>{nota.timestamp}</div>
-                      <div className="text-[10px] text-slate-400">{nota.date}</div>
-                    </td>
-
-                    {/* Packing Status Badge */}
-                    <td className="py-3 px-4 text-center">
-                      {nota.isPacked ? (
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Sudah Packing</span>
-                          {nota.packedAt && (
-                            <span className="text-[10px] font-normal text-emerald-700">
-                              ({nota.packedAt})
-                            </span>
-                          )}
+                          <span className={isOverdue ? 'text-rose-950 font-black' : ''}>
+                            {nota.orderNumber}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(nota.orderNumber, nota.id)}
+                            className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-700 rounded-md transition-all"
+                            title="Salin nomor"
+                          >
+                            {copiedId === nota.id ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
                         </div>
-                      ) : (
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs animate-pulse">
-                          <Clock className="w-3.5 h-3.5 text-amber-700" />
-                          <span>Belum Packing</span>
-                        </div>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Actions */}
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onTogglePackedStatus(nota.id)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
-                            nota.isPacked
-                              ? 'border-slate-200 text-slate-600 hover:bg-slate-100'
-                              : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                          }`}
-                          title={
-                            nota.isPacked
-                              ? 'Ubah ke status Belum Packing'
-                              : 'Tandai manual sudah selesai packing'
-                          }
+                      {/* Platform Badge */}
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-block px-2.5 py-0.5 rounded-md font-bold text-[11px] ${getPlatformColor(
+                            nota.platform
+                          )}`}
                         >
-                          {nota.isPacked ? 'Tandai Belum' : 'Tandai Selesai'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onRemoveNota(nota.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                          title="Hapus nota ini"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          {nota.platform}
+                        </span>
+                      </td>
+
+                      {/* Admin Timestamp */}
+                      <td className="py-3 px-4 text-slate-600">
+                        <div>{nota.timestamp}</div>
+                        {!nota.isPacked ? (
+                          <div
+                            className={`text-[10px] font-bold flex items-center gap-1 mt-0.5 ${
+                              isOverdue ? 'text-rose-700 animate-pulse font-extrabold' : 'text-amber-700'
+                            }`}
+                          >
+                            <Clock className="w-2.5 h-2.5 shrink-0" />
+                            <span>+{formatElapsedDuration(elapsedMinutes)} lalu</span>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-400">{nota.date}</div>
+                        )}
+                      </td>
+
+                      {/* Packing Status Badge */}
+                      <td className="py-3 px-4 text-center">
+                        {nota.isPacked ? (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Sudah Packing</span>
+                            {nota.packedAt && (
+                              <span className="text-[10px] font-normal text-emerald-700">
+                                ({nota.packedAt})
+                              </span>
+                            )}
+                          </div>
+                        ) : isOverdue ? (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-900 border border-rose-300 shadow-2xs animate-pulse">
+                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                            <span>⚠️ Tertunda (+{formatElapsedDuration(elapsedMinutes)})</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                            <Clock className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Belum Packing</span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => onTogglePackedStatus(nota.id)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                              nota.isPacked
+                                ? 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                                : isOverdue
+                                ? 'border-rose-300 bg-rose-100/70 text-rose-900 hover:bg-rose-200'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                            }`}
+                            title={
+                              nota.isPacked
+                                ? 'Ubah ke status Belum Packing'
+                                : 'Tandai manual sudah selesai packing'
+                            }
+                          >
+                            {nota.isPacked ? 'Tandai Belum' : 'Tandai Selesai'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveNota(nota.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                            title="Hapus nota ini"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
@@ -923,6 +1714,28 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Hasil Scan di Google Sheet (Tab: Nota Diproses) */}
+      <ProcessedNotaSheetHistory
+        accessToken={accessToken ?? null}
+        userEmail={userEmail}
+        onLoginGoogle={onLoginGoogle}
+        onTokenExpired={onTokenExpired}
+        targetSpreadsheetId={targetSpreadsheetId}
+        targetSheetTab={targetSheetTab}
+        lastSyncTimestamp={lastSyncTimestamp}
+        delayThreshold={currentThreshold}
+        showToast={showToast}
+        onImportToActiveSession={handleImportSheetNotas}
+        sheetRows={sheetRows}
+        loading={sheetLoading}
+        error={sheetError}
+        onRefresh={loadSheetData}
+        lastFetchedAt={sheetLastFetchedAt}
+        resolvedTabName={sheetResolvedTab}
+        selectedStatusFilter={sheetStatusFilter}
+        onStatusFilterChange={setSheetStatusFilter}
+      />
 
       {/* Confirmation Modal to Clear All Notas */}
       <AnimatePresence>

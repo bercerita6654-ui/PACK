@@ -49,6 +49,10 @@ import {
   generateWhatsAppSummary,
   exportDailyCSV,
 } from './utils/csv';
+import {
+  DEFAULT_DELAY_THRESHOLD_MINUTES,
+  isNotaDelayed,
+} from './utils/notaDelay';
 
 export const TARGET_PACKING_SPREADSHEET_ID = '1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI';
 export const TARGET_PACKING_SHEET_TAB = 'Packing Reg';
@@ -97,6 +101,7 @@ export default function App() {
   });
   const [isWorkspaceSubmitting, setIsWorkspaceSubmitting] = useState<boolean>(false);
   const [lastPackingSyncTime, setLastPackingSyncTime] = useState<number>(0);
+  const [lastNotaSyncTime, setLastNotaSyncTime] = useState<number>(0);
 
   const [appData, setAppData] = useState<AppState>(() => {
     const today = formatIndonesianDate(new Date());
@@ -272,6 +277,41 @@ export default function App() {
     }
     return [];
   });
+
+  // Configurable threshold (in minutes) for alerting stale pending notas (default: 1 hari / 1440 menit)
+  const [delayThreshold, setDelayThreshold] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('packTrack_notaDelayThreshold');
+      const parsed = saved ? parseInt(saved, 10) : NaN;
+      // Default to 1440 (1 Hari) if empty or if previously set to small minutes (< 120m)
+      if (isNaN(parsed) || parsed < 120) {
+        return DEFAULT_DELAY_THRESHOLD_MINUTES;
+      }
+      return parsed;
+    } catch {
+      return DEFAULT_DELAY_THRESHOLD_MINUTES;
+    }
+  });
+
+  const handleUpdateDelayThreshold = (newThreshold: number) => {
+    setDelayThreshold(newThreshold);
+    localStorage.setItem('packTrack_notaDelayThreshold', newThreshold.toString());
+  };
+
+  // Clock tick state to update relative elapsed times and alert badges periodically
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Compute number of delayed notas exceeding the threshold
+  const delayedNotaCount = React.useMemo(() => {
+    return processedNotas.filter((n) => isNotaDelayed(n, delayThreshold, nowMs)).length;
+  }, [processedNotas, delayThreshold, nowMs]);
 
   const [webAppUrl, setWebAppUrl] = useState<string>(() => {
     return (
@@ -542,6 +582,7 @@ export default function App() {
       isPacked: Boolean(matchingPacked),
       packedAt: matchingPacked ? matchingPacked.timestamp : undefined,
       notes,
+      createdAt: Date.now(),
     };
 
     setProcessedNotas((prev) => [newNota, ...prev]);
@@ -586,6 +627,7 @@ export default function App() {
             isPacked: Boolean(match),
             packedAt: match ? match.timestamp : undefined,
             notes: item.notes,
+            createdAt: Date.now(),
           });
         }
       } else {
@@ -601,6 +643,7 @@ export default function App() {
           isPacked: Boolean(match),
           packedAt: match ? match.timestamp : undefined,
           notes: item.notes,
+          createdAt: Date.now(),
         });
       }
     }
@@ -1112,6 +1155,7 @@ export default function App() {
             );
           }
 
+          setLastNotaSyncTime(Date.now());
           setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
         } catch (err: any) {
           console.error('Error saving processed notas:', err);
@@ -1164,6 +1208,7 @@ export default function App() {
           packingCount={packedOrders.length}
           notaCount={processedNotas.length}
           pendingNotaCount={processedNotas.filter((n) => !n.isPacked).length}
+          delayedNotaCount={delayedNotaCount}
           user={user}
           activeSpreadsheet={activeSpreadsheet}
           onOpenGoogleDriveModal={() => setIsGoogleDriveModalOpen(true)}
@@ -1226,6 +1271,7 @@ export default function App() {
             targetSheetTab={TARGET_PACKING_SHEET_TAB}
             lastSyncTimestamp={lastPackingSyncTime}
             processedNotas={processedNotas}
+            delayThreshold={delayThreshold}
             onNavigateToNotas={() => setActiveTab('nota')}
           />
         )}
@@ -1245,9 +1291,13 @@ export default function App() {
             accessToken={accessToken}
             userEmail={user?.email}
             onLoginGoogle={handleGoogleSignIn}
+            onTokenExpired={() => setAccessToken(null)}
             targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
             targetSheetTab={TARGET_NOTA_SHEET_TAB}
+            lastSyncTimestamp={lastNotaSyncTime}
             onNavigateToPacking={() => setActiveTab('packing')}
+            delayThreshold={delayThreshold}
+            onDelayThresholdChange={handleUpdateDelayThreshold}
           />
         )}
       </div>
