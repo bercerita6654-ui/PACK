@@ -247,31 +247,23 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {accessToken ? (
-            <button
-              type="button"
-              id="btn-refresh-sheet-history"
-              onClick={loadSheetHistory}
-              disabled={loading}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50"
-              title="Segarkan data dari Google Sheet"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${loading ? 'animate-spin' : ''}`} />
-              <span>{loading ? 'Memuat...' : 'Segarkan Data'}</span>
-            </button>
-          ) : (
-            onLoginGoogle && (
-              <button
-                type="button"
-                id="btn-login-google-drive"
-                onClick={onLoginGoogle}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>{userEmail ? 'Perbarui Sesi Google' : 'Hubungkan Akun Google'}</span>
-              </button>
-            )
-          )}
+          <button
+            type="button"
+            id="btn-refresh-sheet-history"
+            onClick={() => {
+              if (!accessToken && onLoginGoogle) {
+                onLoginGoogle();
+              } else {
+                loadSheetHistory();
+              }
+            }}
+            disabled={loading}
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50"
+            title="Segarkan data dari Google Sheet"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? 'Memuat...' : 'Segarkan Data'}</span>
+          </button>
 
           <a
             href={spreadsheetUrl}

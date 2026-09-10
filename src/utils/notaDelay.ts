@@ -583,3 +583,79 @@ export function isNotaDelayed(
   return getNotaElapsedMinutes(nota, nowMs) >= thresholdMinutes;
 }
 
+/**
+ * Generates formatted text report for Packing Status (Data Google Sheets).
+ *
+ * Example Output:
+ * KAMIS, 10 September 2026 (16:00)
+ * *Update Harian Pesanan REG*
+ *
+ * TOTAL HARIAN      : 34 nota
+ * SUDAH PACKING  : 20 nota (last update 17:00)
+ * BELUM PACKING  : 14 nota
+ */
+export function generatePackingReportText({
+  totalCount,
+  packedCount,
+  pendingCount,
+  timeframe = 'today',
+  lastPackedTimeStr,
+  customDate,
+}: {
+  totalCount: number;
+  packedCount: number;
+  pendingCount: number;
+  timeframe?: 'today' | 'week' | 'month' | 'all';
+  lastPackedTimeStr?: string;
+  customDate?: Date;
+}): string {
+  const now = customDate || new Date();
+
+  // Indonesian Day Name in UPPERCASE (e.g. KAMIS)
+  const dayNames = ['MINGGU', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+  const dayName = dayNames[now.getDay()];
+
+  // Indonesian Month Name
+  const monthNames = [
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
+  ];
+  const dateFormatted = `${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+  const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  // Title and Total label according to timeframe
+  let titleText = '*Update Harian Pesanan REG*';
+  let totalLabel = 'TOTAL HARIAN     ';
+
+  if (timeframe === 'week') {
+    titleText = '*Update Mingguan Pesanan REG*';
+    totalLabel = 'TOTAL MINGGUAN   ';
+  } else if (timeframe === 'month') {
+    titleText = '*Update Bulanan Pesanan REG*';
+    totalLabel = 'TOTAL BULANAN    ';
+  } else if (timeframe === 'all') {
+    titleText = '*Update Pesanan REG*';
+    totalLabel = 'TOTAL NOTA       ';
+  }
+
+  const lastUpdate =
+    lastPackedTimeStr && lastPackedTimeStr !== '-' ? lastPackedTimeStr : timeFormatted;
+
+  return `${dayName}, ${dateFormatted} (${timeFormatted})
+${titleText}
+
+${totalLabel} : ${totalCount} nota
+SUDAH PACKING  : ${packedCount} nota (last update ${lastUpdate})
+BELUM PACKING  : ${pendingCount} nota`;
+}
+

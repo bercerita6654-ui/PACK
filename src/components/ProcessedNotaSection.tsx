@@ -42,6 +42,7 @@ import {
   isDateThisWeek,
   isDateThisMonth,
   normalizeOrderNumber,
+  generatePackingReportText,
 } from '../utils/notaDelay';
 import {
   fetchProcessedNotasHistory,
@@ -409,6 +410,66 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const sheetTodayTotal = useMemo(() => sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime)).length, [sheetRows]);
   const sheetWeekTotal = useMemo(() => sheetRows.filter((r) => isDateThisWeek(r.adminDate, r.adminTime)).length, [sheetRows]);
   const sheetMonthTotal = useMemo(() => sheetRows.filter((r) => isDateThisMonth(r.adminDate, r.adminTime)).length, [sheetRows]);
+
+  // Extract last update time for packed items (formatted HH:mm)
+  const lastPackedTimeStr = useMemo(() => {
+    const packedItems = dashboardFilteredSheetRows.filter((r) => r.isPacked);
+    if (packedItems.length === 0) {
+      if (sheetLastFetchedAt) {
+        return `${String(sheetLastFetchedAt.getHours()).padStart(2, '0')}:${String(sheetLastFetchedAt.getMinutes()).padStart(2, '0')}`;
+      }
+      const d = new Date();
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+
+    // Check from the most recent packed item for time string
+    for (let i = packedItems.length - 1; i >= 0; i--) {
+      const pt = packedItems[i].packingTime;
+      if (pt && pt !== '-') {
+        const match = pt.match(/\b(\d{1,2}:\d{2})(?::\d{2})?\b/);
+        if (match) {
+          return match[1];
+        }
+      }
+    }
+
+    if (sheetLastFetchedAt) {
+      return `${String(sheetLastFetchedAt.getHours()).padStart(2, '0')}:${String(sheetLastFetchedAt.getMinutes()).padStart(2, '0')}`;
+    }
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }, [dashboardFilteredSheetRows, sheetLastFetchedAt]);
+
+  const [copiedReport, setCopiedReport] = useState<boolean>(false);
+
+  const handleCopyPackingReport = async () => {
+    const reportText = generatePackingReportText({
+      totalCount: sheetTotalCount,
+      packedCount: sheetPackedCount,
+      pendingCount: sheetPendingCount,
+      timeframe: sheetTimeframe,
+      lastPackedTimeStr,
+      customDate: new Date(),
+    });
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(reportText);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = reportText;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedReport(true);
+      setTimeout(() => setCopiedReport(false), 2500);
+      showToast('Report status packing berhasil disalin ke clipboard!', 'success');
+    } catch {
+      showToast('Gagal menyalin report ke clipboard.', 'error');
+    }
+  };
 
   const handleFilterAndScrollSheet = (status: 'all' | 'pending' | 'overdue' | 'packed') => {
     setSheetStatusFilter(status);
@@ -914,31 +975,43 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
 
           {/* Action buttons at top dashboard */}
           <div className="flex flex-wrap items-center gap-2">
-            {accessToken ? (
-              <button
-                type="button"
-                id="btn-refresh-sheet-top"
-                onClick={loadSheetData}
-                disabled={sheetLoading}
-                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-600/70 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
-                title="Segarkan data nota langsung dari Google Sheets"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${sheetLoading ? 'animate-spin' : ''}`} />
-                <span>{sheetLoading ? 'Memuat...' : 'Segarkan Data'}</span>
-              </button>
-            ) : (
-              onLoginGoogle && (
-                <button
-                  type="button"
-                  id="btn-login-google-top"
-                  onClick={onLoginGoogle}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>{userEmail ? 'Perbarui Sesi Google' : 'Hubungkan Google Sheets'}</span>
-                </button>
-              )
-            )}
+            {/* Tombol Salin Report */}
+            <button
+              type="button"
+              id="btn-copy-packing-report-top"
+              onClick={handleCopyPackingReport}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md ${
+                copiedReport
+                  ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-300'
+                  : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white'
+              }`}
+              title="Salin ringkasan laporan status packing ke clipboard"
+            >
+              {copiedReport ? (
+                <Check className="w-3.5 h-3.5 text-slate-950 stroke-[3]" />
+              ) : (
+                <Copy className="w-3.5 h-3.5 text-emerald-100" />
+              )}
+              <span>{copiedReport ? 'Report Tersalin!' : 'Salin Report'}</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-refresh-sheet-top"
+              onClick={() => {
+                if (!accessToken && onLoginGoogle) {
+                  onLoginGoogle();
+                } else {
+                  loadSheetData();
+                }
+              }}
+              disabled={sheetLoading}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-600/70 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
+              title="Segarkan data nota langsung dari Google Sheets"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${sheetLoading ? 'animate-spin' : ''}`} />
+              <span>{sheetLoading ? 'Memuat...' : 'Segarkan Data'}</span>
+            </button>
 
             <a
               href={`https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit`}
@@ -1060,14 +1133,35 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span>Menampilkan:</span>
-            <span className="font-extrabold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-500/30">
-              {sheetTimeframe === 'today' && 'Data Harian (Hari Ini)'}
-              {sheetTimeframe === 'week' && 'Data Mingguan (Minggu Ini)'}
-              {sheetTimeframe === 'month' && 'Data Bulanan (Bulan Ini)'}
-              {sheetTimeframe === 'all' && 'Semua Riwayat Data'}
-            </span>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              id="btn-copy-packing-report-bar"
+              onClick={handleCopyPackingReport}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border shadow-xs ${
+                copiedReport
+                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                  : 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-500/40 hover:border-emerald-400'
+              }`}
+              title="Salin report sesuai filter periode aktif"
+            >
+              {copiedReport ? (
+                <Check className="w-3.5 h-3.5 text-slate-950 stroke-[3]" />
+              ) : (
+                <Copy className="w-3.5 h-3.5 text-emerald-400" />
+              )}
+              <span>{copiedReport ? 'Report Tersalin!' : 'Salin Report'}</span>
+            </button>
+
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span>Menampilkan:</span>
+              <span className="font-extrabold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                {sheetTimeframe === 'today' && 'Data Harian (Hari Ini)'}
+                {sheetTimeframe === 'week' && 'Data Mingguan (Minggu Ini)'}
+                {sheetTimeframe === 'month' && 'Data Bulanan (Bulan Ini)'}
+                {sheetTimeframe === 'all' && 'Semua Riwayat Data'}
+              </span>
+            </div>
           </div>
         </div>
 

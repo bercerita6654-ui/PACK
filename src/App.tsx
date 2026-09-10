@@ -64,6 +64,7 @@ export default function App() {
   // Google Authentication & Workspace state
   const [user, setUser] = useState<User | null>(() => getCachedUserProfile() as User | null);
   const [accessToken, setAccessToken] = useState<string | null>(() => getStoredAccessToken());
+  const [isRenewingSession, setIsRenewingSession] = useState<boolean>(false);
   const [activeSpreadsheet, setActiveSpreadsheet] = useState<ActiveSpreadsheet | null>(() => {
     try {
       const saved = localStorage.getItem('packTrack_activeSpreadsheet');
@@ -379,16 +380,28 @@ export default function App() {
     }
   }, [activeSpreadsheet]);
 
-  // Handle Google Sign In
-  const handleGoogleSignIn = async () => {
+  // Handle Google Sign In / 1-Click Session Action
+  const handleGoogleSessionAction = async () => {
+    setIsRenewingSession(true);
     try {
-      const result = await googleSignIn();
-      if (result) {
-        setUser(result.user);
-        setAccessToken(result.accessToken);
-        showToast('Berhasil masuk dengan akun Google!', 'success');
-        if (!activeSpreadsheet) {
-          setIsGoogleDriveModalOpen(true);
+      if (user || getCachedUserProfile()) {
+        showToast('Memperbarui sesi Google & otomatis login...', 'info');
+        const newToken = await refreshGoogleToken();
+        setAccessToken(newToken);
+        const cached = getCachedUserProfile();
+        if (cached && !user) {
+          setUser(cached as unknown as User);
+        }
+        showToast('Sesi Google berhasil diperbarui & terhubung!', 'success');
+      } else {
+        const result = await googleSignIn();
+        if (result) {
+          setUser(result.user);
+          setAccessToken(result.accessToken);
+          showToast('Berhasil masuk dengan akun Google!', 'success');
+          if (!activeSpreadsheet) {
+            setIsGoogleDriveModalOpen(true);
+          }
         }
       }
     } catch (err: any) {
@@ -396,10 +409,26 @@ export default function App() {
         showToast('Login Google dibatalkan.', 'info');
         return;
       }
-      console.error('Google sign in error:', err);
-      showToast(err.message || 'Gagal login dengan akun Google.', 'error');
+      // If refresh failed because session was completely dropped, fallback to sign in popup
+      try {
+        const result = await googleSignIn();
+        if (result) {
+          setUser(result.user);
+          setAccessToken(result.accessToken);
+          showToast('Sesi Google berhasil terhubung!', 'success');
+        }
+      } catch (retryErr: any) {
+        if (retryErr?.code !== 'auth/popup-closed-by-user') {
+          console.error('Google session action error:', retryErr);
+          showToast(retryErr?.message || 'Gagal memperbarui sesi Google.', 'error');
+        }
+      }
+    } finally {
+      setIsRenewingSession(false);
     }
   };
+
+  const handleGoogleSignIn = handleGoogleSessionAction;
 
   // Handle Google Sign Out
   const handleGoogleSignOut = async () => {
@@ -1279,6 +1308,8 @@ export default function App() {
           activeSpreadsheet={activeSpreadsheet}
           onOpenGoogleDriveModal={() => setIsGoogleDriveModalOpen(true)}
           onGoogleSignIn={handleGoogleSignIn}
+          onRenewSession={handleGoogleSessionAction}
+          isRenewingSession={isRenewingSession}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onShareWhatsApp={handleShareWhatsApp}
           onExportCSV={handleExportCSV}

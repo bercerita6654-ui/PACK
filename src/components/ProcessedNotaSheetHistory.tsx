@@ -35,6 +35,7 @@ import {
   isDateThisWeek,
   isDateThisMonth,
   normalizeOrderNumber,
+  generatePackingReportText,
 } from '../utils/notaDelay';
 
 export interface ProcessedNotaSheetHistoryProps {
@@ -474,6 +475,58 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     );
   };
 
+  const [copiedReport, setCopiedReport] = useState<boolean>(false);
+
+  // Copy formatted text report based on active period stats
+  const handleCopyReport = async () => {
+    // Find last packed time in effective period rows
+    const effectiveRows = sheetRows.filter((r) => {
+      if (timeframe === 'today') return isDateToday(r.adminDate, r.adminTime);
+      if (timeframe === 'week') return isDateThisWeek(r.adminDate, r.adminTime);
+      if (timeframe === 'month') return isDateThisMonth(r.adminDate, r.adminTime);
+      return true;
+    });
+    const packedItems = effectiveRows.filter((r) => r.isPacked);
+    let lastPackedTimeStr = '';
+    for (let i = packedItems.length - 1; i >= 0; i--) {
+      const pt = packedItems[i].packingTime;
+      if (pt && pt !== '-') {
+        const match = pt.match(/\b(\d{1,2}:\d{2})(?::\d{2})?\b/);
+        if (match) {
+          lastPackedTimeStr = match[1];
+          break;
+        }
+      }
+    }
+
+    const reportText = generatePackingReportText({
+      totalCount: periodStats.totalPeriod,
+      packedCount: periodStats.packedPeriod,
+      pendingCount: periodStats.pendingPeriod,
+      timeframe,
+      lastPackedTimeStr: lastPackedTimeStr || undefined,
+      customDate: new Date(),
+    });
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(reportText);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = reportText;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedReport(true);
+      setTimeout(() => setCopiedReport(false), 2500);
+      showToast('Report status packing berhasil disalin ke clipboard!', 'success');
+    } catch {
+      showToast('Gagal menyalin report ke clipboard.', 'error');
+    }
+  };
+
   // Copy order numbers from sheet
   const handleCopyOrderNumbers = () => {
     if (filteredAndSortedRows.length === 0) {
@@ -572,31 +625,23 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {accessToken ? (
-            <button
-              type="button"
-              id="btn-refresh-nota-sheet"
-              onClick={loadSheetHistory}
-              disabled={loading}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50"
-              title="Segarkan data nota dari Google Sheet"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${loading ? 'animate-spin' : ''}`} />
-              <span>{loading ? 'Memuat...' : 'Segarkan Data'}</span>
-            </button>
-          ) : (
-            onLoginGoogle && (
-              <button
-                type="button"
-                id="btn-login-google-nota"
-                onClick={onLoginGoogle}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>{userEmail ? 'Perbarui Sesi Google' : 'Hubungkan Akun Google'}</span>
-              </button>
-            )
-          )}
+          <button
+            type="button"
+            id="btn-refresh-nota-sheet"
+            onClick={() => {
+              if (!accessToken && onLoginGoogle) {
+                onLoginGoogle();
+              } else {
+                loadSheetHistory();
+              }
+            }}
+            disabled={loading}
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50"
+            title="Segarkan data nota dari Google Sheet"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? 'Memuat...' : 'Segarkan Data'}</span>
+          </button>
 
           <a
             href={spreadsheetUrl}
@@ -741,55 +786,76 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
             </div>
           </div>
 
-          <div className="inline-flex bg-slate-200/80 p-0.5 rounded-xl text-xs font-bold">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              id="btn-sheet-history-timeframe-today"
-              onClick={() => setTimeframe('today')}
-              className={`px-2.5 py-1 rounded-lg transition-all ${
-                timeframe === 'today'
-                  ? 'bg-indigo-600 text-white shadow-2xs font-black'
-                  : 'text-slate-600 hover:text-slate-900'
+              id="btn-sheet-history-copy-report"
+              onClick={handleCopyReport}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs ${
+                copiedReport
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300'
               }`}
+              title="Salin report ringkasan status packing ke clipboard"
             >
-              Harian
+              {copiedReport ? (
+                <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+              ) : (
+                <Copy className="w-3.5 h-3.5 text-emerald-600" />
+              )}
+              <span>{copiedReport ? 'Report Tersalin!' : 'Salin Report'}</span>
             </button>
-            <button
-              type="button"
-              id="btn-sheet-history-timeframe-week"
-              onClick={() => setTimeframe('week')}
-              className={`px-2.5 py-1 rounded-lg transition-all ${
-                timeframe === 'week'
-                  ? 'bg-indigo-600 text-white shadow-2xs font-black'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Mingguan
-            </button>
-            <button
-              type="button"
-              id="btn-sheet-history-timeframe-month"
-              onClick={() => setTimeframe('month')}
-              className={`px-2.5 py-1 rounded-lg transition-all ${
-                timeframe === 'month'
-                  ? 'bg-indigo-600 text-white shadow-2xs font-black'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Bulanan
-            </button>
-            <button
-              type="button"
-              id="btn-sheet-history-timeframe-all"
-              onClick={() => setTimeframe('all')}
-              className={`px-2.5 py-1 rounded-lg transition-all ${
-                timeframe === 'all'
-                  ? 'bg-indigo-600 text-white shadow-2xs font-black'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Semua
-            </button>
+
+            <div className="inline-flex bg-slate-200/80 p-0.5 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                id="btn-sheet-history-timeframe-today"
+                onClick={() => setTimeframe('today')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  timeframe === 'today'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Harian
+              </button>
+              <button
+                type="button"
+                id="btn-sheet-history-timeframe-week"
+                onClick={() => setTimeframe('week')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  timeframe === 'week'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Mingguan
+              </button>
+              <button
+                type="button"
+                id="btn-sheet-history-timeframe-month"
+                onClick={() => setTimeframe('month')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  timeframe === 'month'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Bulanan
+              </button>
+              <button
+                type="button"
+                id="btn-sheet-history-timeframe-all"
+                onClick={() => setTimeframe('all')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  timeframe === 'all'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Semua
+              </button>
+            </div>
           </div>
         </div>
 
