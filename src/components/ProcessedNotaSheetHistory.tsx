@@ -15,6 +15,8 @@ import {
   ArrowUpDown,
   Download,
   Import,
+  Calendar,
+  FileText,
 } from 'lucide-react';
 import { PlatformType } from '../types';
 import { fetchProcessedNotasHistory } from '../services/googleWorkspace';
@@ -102,6 +104,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<'Semua' | 'Shopee' | 'Tokopedia/TikTok'>('Semua');
   const [internalStatusFilter, setInternalStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
+  const [filterTodayOnly, setFilterTodayOnly] = useState<boolean>(false);
 
   const statusFilter = selectedStatusFilter !== undefined ? selectedStatusFilter : internalStatusFilter;
   const setStatusFilter = (val: 'all' | 'pending' | 'overdue' | 'packed') => {
@@ -266,6 +269,57 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     [sheetRows]
   );
 
+  // Today's statistics in Google Sheet (Tab 'Nota Diproses')
+  const todayStats = useMemo(() => {
+    const now = new Date();
+    const todayRows = sheetRows.filter((r) => {
+      const d = parseNotaDateTime(r.adminDate, r.adminTime);
+      if (d && !isNaN(d.getTime())) {
+        return (
+          d.getFullYear() === now.getFullYear() &&
+          d.getMonth() === now.getMonth() &&
+          d.getDate() === now.getDate()
+        );
+      }
+      if (r.adminDate) {
+        const todayStrId = now
+          .toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          })
+          .toLowerCase();
+        if (r.adminDate.toLowerCase().includes(todayStrId)) return true;
+        const day = String(now.getDate());
+        const month = String(now.getMonth() + 1);
+        const year = String(now.getFullYear());
+        const padD = day.padStart(2, '0');
+        const padM = month.padStart(2, '0');
+        const clean = r.adminDate.trim();
+        return (
+          clean.includes(`${day}/${month}/${year}`) ||
+          clean.includes(`${padD}/${padM}/${year}`) ||
+          clean.includes(`${year}-${padM}-${padD}`) ||
+          clean.includes(`${day}-${month}-${year}`)
+        );
+      }
+      return false;
+    });
+
+    const totalToday = todayRows.length;
+    const packedToday = todayRows.filter((r) => r.isPacked).length;
+    const pendingToday = totalToday - packedToday;
+    const percentToday =
+      totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
+
+    return {
+      totalToday,
+      packedToday,
+      pendingToday,
+      percentToday,
+    };
+  }, [sheetRows]);
+
   // Filter and sort
   const filteredAndSortedRows = useMemo(() => {
     const nowMs = Date.now();
@@ -282,6 +336,43 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
         return elapsed >= effectiveThreshold;
       })();
 
+      const matchToday =
+        !filterTodayOnly ||
+        (() => {
+          const now = new Date();
+          const d = parseNotaDateTime(row.adminDate, row.adminTime);
+          if (d && !isNaN(d.getTime())) {
+            return (
+              d.getFullYear() === now.getFullYear() &&
+              d.getMonth() === now.getMonth() &&
+              d.getDate() === now.getDate()
+            );
+          }
+          if (row.adminDate) {
+            const todayStrId = now
+              .toLocaleDateString('id-ID', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })
+              .toLowerCase();
+            if (row.adminDate.toLowerCase().includes(todayStrId)) return true;
+            const day = String(now.getDate());
+            const month = String(now.getMonth() + 1);
+            const year = String(now.getFullYear());
+            const padD = day.padStart(2, '0');
+            const padM = month.padStart(2, '0');
+            const clean = row.adminDate.trim();
+            return (
+              clean.includes(`${day}/${month}/${year}`) ||
+              clean.includes(`${padD}/${padM}/${year}`) ||
+              clean.includes(`${year}-${padM}-${padD}`) ||
+              clean.includes(`${day}-${month}-${year}`)
+            );
+          }
+          return false;
+        })();
+
       const matchStatus =
         statusFilter === 'all' ||
         (statusFilter === 'packed' && row.isPacked) ||
@@ -293,7 +384,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
         row.adminDate.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
         row.adminTime.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
         row.notes.toLowerCase().includes(searchQuery.toLowerCase().trim());
-      return matchPlatform && matchStatus && matchSearch;
+      return matchPlatform && matchStatus && matchSearch && matchToday;
     });
 
     if (sortDescending) {
@@ -301,7 +392,15 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     }
 
     return result;
-  }, [sheetRows, platformFilter, statusFilter, searchQuery, sortDescending, effectiveThreshold]);
+  }, [
+    sheetRows,
+    platformFilter,
+    statusFilter,
+    searchQuery,
+    sortDescending,
+    effectiveThreshold,
+    filterTodayOnly,
+  ]);
 
   // Copy single order
   const handleCopySingle = (orderNumber: string, id: string) => {
@@ -546,6 +645,160 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* RINGKASAN STATISTIK KECIL DI ATAS TABEL NOTA DIPROSES (HARI INI)           */}
+      {/* ========================================================================= */}
+      <div
+        id="mini-stats-today-sheet"
+        className="p-3.5 sm:p-4 bg-slate-50/90 border-b border-slate-200"
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-2.5 mb-2.5 border-b border-slate-200/80">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg">
+              <Calendar className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                Status Kerja Hari Ini
+              </span>
+              <span className="text-xs text-slate-500 ml-1.5 font-medium hidden sm:inline">
+                ({new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })})
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            id="btn-filter-today-sheet"
+            onClick={() => setFilterTodayOnly(!filterTodayOnly)}
+            className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+              filterTodayOnly
+                ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-300'
+                : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300/80 shadow-2xs'
+            }`}
+            title="Klik untuk menyaring hanya nota tanggal hari ini di tabel"
+          >
+            <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+            <span>{filterTodayOnly ? 'Tampilkan Semua Tanggal' : 'Filter Tabel: Hanya Hari Ini'}</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                filterTodayOnly ? 'bg-indigo-700 text-white' : 'bg-indigo-100 text-indigo-800'
+              }`}
+            >
+              {todayStats.totalToday}
+            </span>
+          </button>
+        </div>
+
+        {/* 3 Mini Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+          {/* Card 1: Total Nota Hari Ini */}
+          <div
+            id="mini-card-today-total"
+            onClick={() => {
+              setFilterTodayOnly(true);
+              setStatusFilter('all');
+            }}
+            className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-2xs hover:border-indigo-300 hover:shadow-xs transition-all cursor-pointer group flex items-center justify-between"
+            title="Klik untuk memfilter semua nota hari ini"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg shrink-0">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Total Nota Hari Ini
+                </span>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <span className="text-xl font-black text-slate-900 leading-tight">
+                    {todayStats.totalToday}
+                  </span>
+                  <span className="text-xs text-slate-500 font-semibold">Nota</span>
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md group-hover:bg-indigo-100 transition-colors">
+                {filterTodayOnly ? 'Aktif' : 'Lihat →'}
+              </span>
+            </div>
+          </div>
+
+          {/* Card 2: Sudah Selesai Hari Ini */}
+          <div
+            id="mini-card-today-packed"
+            onClick={() => {
+              setFilterTodayOnly(true);
+              setStatusFilter('packed');
+            }}
+            className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/90 shadow-2xs hover:border-emerald-300 hover:bg-emerald-50 transition-all cursor-pointer group flex items-center justify-between"
+            title="Klik untuk memfilter nota hari ini yang sudah selesai"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg shrink-0">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-emerald-900 uppercase tracking-wider block">
+                  Sudah Selesai
+                </span>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <span className="text-xl font-black text-emerald-800 leading-tight">
+                    {todayStats.packedToday}
+                  </span>
+                  <span className="text-xs text-emerald-700 font-semibold">Nota</span>
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] font-bold text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded-full block">
+                {todayStats.percentToday}% Selesai
+              </span>
+            </div>
+          </div>
+
+          {/* Card 3: Pending Hari Ini */}
+          <div
+            id="mini-card-today-pending"
+            onClick={() => {
+              setFilterTodayOnly(true);
+              setStatusFilter('pending');
+            }}
+            className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/90 shadow-2xs hover:border-amber-300 hover:bg-amber-50 transition-all cursor-pointer group flex items-center justify-between"
+            title="Klik untuk memfilter nota hari ini yang masih pending"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-amber-100 text-amber-800 rounded-lg shrink-0">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider block">
+                  Pending (Belum Selesai)
+                </span>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <span className="text-xl font-black text-amber-800 leading-tight">
+                    {todayStats.pendingToday}
+                  </span>
+                  <span className="text-xs text-amber-700 font-semibold">Nota</span>
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <span
+                className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                  todayStats.pendingToday > 0
+                    ? 'bg-amber-200 text-amber-900 animate-pulse'
+                    : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {todayStats.pendingToday > 0 ? 'Menunggu' : 'Beres'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Filters and Search Bar */}
       <div className="p-4 sm:p-5 bg-slate-50/70 border-b border-slate-200">

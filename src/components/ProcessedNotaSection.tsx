@@ -23,6 +23,7 @@ import {
   ArrowRight,
   Filter,
   LogIn,
+  Calendar,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProcessedNota, PlatformType } from '../types';
@@ -330,6 +331,40 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const packedCount = useMemo(() => notas.filter((n) => n.isPacked).length, [notas]);
   const pendingCount = totalNotas - packedCount;
   const progressPercent = totalNotas > 0 ? Math.round((packedCount / totalNotas) * 100) : 0;
+
+  // Today's statistics for active session
+  const localTodayStats = useMemo(() => {
+    const now = new Date();
+    const todayNotas = notas.filter((n) => {
+      if (n.createdAt) {
+        const d = new Date(n.createdAt);
+        if (!isNaN(d.getTime())) {
+          return (
+            d.getFullYear() === now.getFullYear() &&
+            d.getMonth() === now.getMonth() &&
+            d.getDate() === now.getDate()
+          );
+        }
+      }
+      const d = parseNotaDateTime(n.date, n.timestamp);
+      if (d && !isNaN(d.getTime())) {
+        return (
+          d.getFullYear() === now.getFullYear() &&
+          d.getMonth() === now.getMonth() &&
+          d.getDate() === now.getDate()
+        );
+      }
+      return true;
+    });
+
+    const totalToday = todayNotas.length;
+    const packedToday = todayNotas.filter((n) => n.isPacked).length;
+    const pendingToday = totalToday - packedToday;
+    const percentToday =
+      totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
+
+    return { totalToday, packedToday, pendingToday, percentToday };
+  }, [notas]);
 
   // Stale/Delayed pending notas analytics
   const delayedNotas = useMemo(() => {
@@ -1361,6 +1396,121 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
 
       {/* Main Table & Filter Tools */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden space-y-4 p-5 sm:p-6">
+        {/* Ringkasan Statistik Kecil di Atas Tabel Nota Diproses */}
+        <div
+          id="mini-stats-local-table"
+          className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 sm:p-4"
+        >
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-200/80">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-indigo-100 text-indigo-800 rounded-lg">
+                <Calendar className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                Ringkasan Status Nota Hari Ini
+              </span>
+              <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+                ({new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })})
+              </span>
+            </div>
+            <span className="text-[11px] font-semibold text-slate-500">
+              {localTodayStats.totalToday} nota dalam sesi scan aktif
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+            {/* Total Nota Hari Ini */}
+            <div
+              id="card-local-today-total"
+              onClick={() => setStatusFilter('all')}
+              className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-2xs hover:border-indigo-300 transition-all cursor-pointer flex items-center justify-between group"
+              title="Tampilkan semua nota"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg shrink-0">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    Total Hari Ini
+                  </span>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <span className="text-xl font-black text-slate-900 leading-tight">
+                      {localTodayStats.totalToday}
+                    </span>
+                    <span className="text-xs text-slate-500 font-semibold">Nota</span>
+                  </div>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                Semua
+              </span>
+            </div>
+
+            {/* Sudah Selesai */}
+            <div
+              id="card-local-today-packed"
+              onClick={() => setStatusFilter('packed')}
+              className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/90 shadow-2xs hover:border-emerald-300 transition-all cursor-pointer flex items-center justify-between group"
+              title="Filter nota sudah selesai"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg shrink-0">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold text-emerald-900 uppercase tracking-wider block">
+                    Sudah Selesai
+                  </span>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <span className="text-xl font-black text-emerald-800 leading-tight">
+                      {localTodayStats.packedToday}
+                    </span>
+                    <span className="text-xs text-emerald-700 font-semibold">Nota</span>
+                  </div>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded-full">
+                {localTodayStats.percentToday}% Selesai
+              </span>
+            </div>
+
+            {/* Pending */}
+            <div
+              id="card-local-today-pending"
+              onClick={() => setStatusFilter('pending')}
+              className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/90 shadow-2xs hover:border-amber-300 transition-all cursor-pointer flex items-center justify-between group"
+              title="Filter nota belum selesai (pending)"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-lg shrink-0">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider block">
+                    Pending
+                  </span>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <span className="text-xl font-black text-amber-800 leading-tight">
+                      {localTodayStats.pendingToday}
+                    </span>
+                    <span className="text-xs text-amber-700 font-semibold">Nota</span>
+                  </div>
+                </div>
+              </div>
+              <span
+                className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                  localTodayStats.pendingToday > 0
+                    ? 'bg-amber-200 text-amber-900 animate-pulse'
+                    : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {localTodayStats.pendingToday > 0 ? 'Menunggu' : 'Beres'}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Filter and Search Bar */}
         <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4">
           {/* Status Filter Tabs */}
