@@ -33,10 +33,12 @@ export const isStoredTokenValid = (): boolean => {
     const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (!token) return false;
     const expiryStr = localStorage.getItem(TOKEN_EXPIRY_KEY);
-    if (!expiryStr) return false;
+    if (!expiryStr) {
+      // If token exists without expiry, keep it active until 401
+      return true;
+    }
     const expiry = Number(expiryStr);
-    if (isNaN(expiry) || Date.now() >= expiry - 30000) {
-      // Expired or within 30 seconds of expiring
+    if (isNaN(expiry) || Date.now() >= expiry) {
       return false;
     }
     return true;
@@ -58,23 +60,33 @@ export const invalidateStoredToken = () => {
   }
 };
 
-// Helper: Get cached token from localStorage (returns null if expired)
+// Helper: Get cached token from localStorage (returns null if invalid)
 export const getStoredAccessToken = (): string | null => {
   try {
     if (typeof window === 'undefined') return null;
-    if (!isStoredTokenValid()) {
-      invalidateStoredToken();
-      return null;
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!token) return null;
+    
+    // Check expiry
+    const expiryStr = localStorage.getItem(TOKEN_EXPIRY_KEY);
+    if (expiryStr) {
+      const expiry = Number(expiryStr);
+      if (!isNaN(expiry) && Date.now() >= expiry) {
+        // Expired
+        invalidateStoredToken();
+        return null;
+      }
     }
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
+    cachedAccessToken = token;
+    return token;
   } catch (e) {
     console.warn('Could not read access token from storage:', e);
     return null;
   }
 };
 
-// Helper: Save token to localStorage with expiry
-export const setStoredAccessToken = (token: string | null, expiresInSeconds = 3500) => {
+// Helper: Save token to localStorage with expiry (default: 1 hour)
+export const setStoredAccessToken = (token: string | null, expiresInSeconds = 3600) => {
   try {
     if (typeof window === 'undefined') return;
     if (token) {

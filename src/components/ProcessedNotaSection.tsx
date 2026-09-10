@@ -26,7 +26,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ProcessedNota, PlatformType } from '../types';
+import { ProcessedNota, PlatformType, PackedOrder } from '../types';
 import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
 import {
@@ -37,9 +37,13 @@ import {
   DELAY_THRESHOLD_OPTIONS,
   formatThresholdLabel,
   parseNotaDateTime,
+  evaluateNotaPackedStatus,
+  isDateToday,
+  normalizeOrderNumber,
 } from '../utils/notaDelay';
 import {
   fetchProcessedNotasHistory,
+  fetchCrossReferencedNotasAndPacking,
   isAuthExpiredError,
   invalidateStoredToken,
 } from '../services/googleWorkspace';
@@ -50,6 +54,7 @@ import {
 
 interface ProcessedNotaSectionProps {
   notas: ProcessedNota[];
+  packedOrders?: PackedOrder[];
   onAddNota: (
     orderNumber: string,
     platform: PlatformType,
@@ -82,6 +87,7 @@ type StatusFilter = 'all' | 'pending' | 'overdue' | 'packed';
 
 export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   notas,
+  packedOrders = [],
   onAddNota,
   onAddNotasBatch,
   onRemoveNota,
@@ -110,6 +116,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState<boolean>(false);
+  const [todayStatsSource, setTodayStatsSource] = useState<'sheet' | 'local'>('sheet');
 
   // Local fallback threshold if not provided from parent (default: 1 hari / 1440 menit)
   const [localThreshold, setLocalThreshold] = useState<number>(() => {
@@ -181,9 +188,11 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [sheetLastFetchedAt, setSheetLastFetchedAt] = useState<Date | null>(null);
   const [sheetResolvedTab, setSheetResolvedTab] = useState<string>(targetSheetTab);
+  const [sheetResolvedPackingTab, setSheetResolvedPackingTab] = useState<string>('Packing Reg');
+  const [sheetTotalPackingInSheet, setSheetTotalPackingInSheet] = useState<number>(0);
   const [sheetStatusFilter, setSheetStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
 
-  // Fetch data from Google Sheets
+  // Fetch data from Google Sheets - cross-referencing "Nota Diproses" & "Packing Reg"
   const loadSheetData = useCallback(async () => {
     if (!accessToken) {
       setSheetRows([]);
@@ -195,10 +204,17 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     setSheetError(null);
 
     try {
-      const result = await fetchProcessedNotasHistory(accessToken, targetSpreadsheetId, targetSheetTab);
-      setSheetResolvedTab(result.tabName);
+      const result = await fetchCrossReferencedNotasAndPacking(
+        accessToken,
+        targetSpreadsheetId,
+        targetSheetTab,
+        'Packing Reg'
+      );
+      setSheetResolvedTab(result.notaTabName);
+      setSheetResolvedPackingTab(result.packingTabName);
+      setSheetTotalPackingInSheet(result.totalPackingCount);
 
-      // Detect header columns dynamically
+      // Detect header columns dynamically in Nota Diproses
       let colOrder = 1;
       let colPlatform = 2;
       let colDate = 3;
@@ -207,29 +223,74 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
       let colPackTime = 6;
       let colNotes = 7;
 
-      if (result.headers && result.headers.length > 0) {
-        result.headers.forEach((h, idx) => {
+      if (result.notaHeaders && result.notaHeaders.length > 0) {
+        result.notaHeaders.forEach((h, idx) => {
           const lower = h.trim().toLowerCase();
-          if (lower.includes('nota') || lower.includes('pesanan') || lower.includes('order')) {
+          if (
+            lower.includes('nota') ||
+            lower.includes('pesanan') ||
+            lower.includes('order') ||
+            lower.includes('resi') ||
+            lower.includes('barcode')
+          ) {
             colOrder = idx;
-          } else if (lower.includes('platform')) {
+          } else if (
+            lower.includes('platform') ||
+            lower.includes('ekspedisi') ||
+            lower.includes('marketplace') ||
+            lower.includes('toko') ||
+            lower.includes('channel')
+          ) {
             colPlatform = idx;
-          } else if (lower.includes('tanggal')) {
+          } else if (
+            lower.includes('tanggal') ||
+            lower.includes('tgl') ||
+            lower.includes('date')
+          ) {
             colDate = idx;
-          } else if (lower.includes('waktu admin') || lower.includes('jam admin') || lower === 'waktu') {
+          } else if (
+            lower.includes('waktu admin') ||
+            lower.includes('jam admin') ||
+            lower.includes('waktu input') ||
+            lower.includes('jam input') ||
+            lower === 'waktu' ||
+            lower === 'jam' ||
+            lower === 'time'
+          ) {
             colTime = idx;
-          } else if (lower.includes('status')) {
+          } else if (
+            lower.includes('status packing') ||
+            lower.includes('status') ||
+            lower.includes('packing') ||
+            lower.includes('kondisi') ||
+            lower.includes('keterangan') ||
+            lower.includes('proses') ||
+            lower.includes('cek')
+          ) {
             colStatus = idx;
-          } else if (lower.includes('waktu packing') || lower.includes('jam packing')) {
+          } else if (
+            lower.includes('waktu packing') ||
+            lower.includes('jam packing') ||
+            lower.includes('tgl packing') ||
+            lower.includes('tanggal packing') ||
+            lower.includes('waktu pack') ||
+            lower.includes('jam pack') ||
+            lower.includes('packed at') ||
+            lower.includes('packed time')
+          ) {
             colPackTime = idx;
-          } else if (lower.includes('catatan') || lower.includes('notes')) {
+          } else if (
+            lower.includes('catatan') ||
+            lower.includes('notes') ||
+            lower.includes('ket')
+          ) {
             colNotes = idx;
           }
         });
       }
 
       const parsed: SheetProcessedNotaRow[] = [];
-      result.rows.forEach((r, idx) => {
+      result.notaRows.forEach((r, idx) => {
         if (!r || r.length === 0 || !r.some((cell) => cell && cell.trim() !== '')) {
           return;
         }
@@ -255,12 +316,19 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           platform = 'Tokopedia/TikTok';
         }
 
-        // Packing status deduction
-        const isPacked =
-          rawStatus.toLowerCase().includes('selesai') ||
-          rawStatus.toLowerCase().includes('sudah') ||
-          rawStatus.toLowerCase().includes('packed') ||
-          (packingTime !== '-' && packingTime !== '' && !packingTime.toLowerCase().includes('belum'));
+        // Comprehensive packing status deduction cross-referenced with:
+        // 1. Sheet "Packing Reg" (via result.packingMap)
+        // 2. Scanned packages in current session (packedOrders)
+        // 3. Local processed notas (notas)
+        // 4. Raw status & packing time from sheet
+        const statusEval = evaluateNotaPackedStatus(
+          rawStatus,
+          packingTime,
+          orderNumber,
+          packedOrders,
+          notas,
+          result.packingMap
+        );
 
         parsed.push({
           rowNumber: idx + 2,
@@ -269,10 +337,12 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           platform,
           adminDate,
           adminTime,
-          isPacked,
-          packingStatus: isPacked ? 'Selesai Packing' : 'Belum Packing',
-          packingTime,
+          isPacked: statusEval.isPacked,
+          packingStatus: statusEval.resolvedStatus,
+          packingTime: statusEval.resolvedTime,
           notes,
+          matchedFromPackingReg: statusEval.matchedSource === 'packing_reg_sheet',
+          matchedSource: statusEval.matchedSource,
         });
       });
 
@@ -291,7 +361,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     } finally {
       setSheetLoading(false);
     }
-  }, [accessToken, targetSpreadsheetId, targetSheetTab, onTokenExpired]);
+  }, [accessToken, targetSpreadsheetId, targetSheetTab, onTokenExpired, packedOrders, notas]);
 
   // Sync / fetch on mount or when accessToken/lastSyncTimestamp change
   useEffect(() => {
@@ -326,50 +396,111 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     }
   };
 
-  // Calculations for stats
-  const totalNotas = notas.length;
-  const packedCount = useMemo(() => notas.filter((n) => n.isPacked).length, [notas]);
+  // Unified evaluation for local notas against Google Sheets 'Packing Reg' and active packing session
+  const effectiveNotas = useMemo(() => {
+    // Build quick lookup sets from sheetRows (which already matched "Packing Reg")
+    const sheetPackedUpperSet = new Set<string>();
+    const sheetPackedNormSet = new Set<string>();
+    const sheetPackedTimeMap = new Map<string, string>();
+
+    sheetRows.forEach((r) => {
+      if (r.isPacked) {
+        const u = r.orderNumber.trim().toUpperCase();
+        const n = normalizeOrderNumber(r.orderNumber);
+        if (u) sheetPackedUpperSet.add(u);
+        if (n) sheetPackedNormSet.add(n);
+        if (r.packingTime && r.packingTime !== '-') {
+          if (u) sheetPackedTimeMap.set(u, r.packingTime);
+          if (n) sheetPackedTimeMap.set(n, r.packingTime);
+        }
+      }
+    });
+
+    return notas.map((nota) => {
+      const upper = nota.orderNumber.trim().toUpperCase();
+      const norm = normalizeOrderNumber(nota.orderNumber);
+
+      // 1. If already packed locally
+      if (nota.isPacked) return nota;
+
+      // 2. Check packedOrders from active packing session
+      const matchedSession = packedOrders.find((p) => {
+        const pUpper = p.orderNumber.trim().toUpperCase();
+        const pNorm = normalizeOrderNumber(p.orderNumber);
+        return pUpper === upper || (norm && pNorm === norm);
+      });
+      if (matchedSession) {
+        return {
+          ...nota,
+          isPacked: true,
+          packedAt: nota.packedAt || matchedSession.timestamp || 'Sesi Aktif',
+        };
+      }
+
+      // 3. Check sheetRows (matched from Sheet Packing Reg)
+      const isPackedInSheet =
+        sheetPackedUpperSet.has(upper) || (norm ? sheetPackedNormSet.has(norm) : false);
+
+      if (isPackedInSheet) {
+        const time =
+          sheetPackedTimeMap.get(upper) ||
+          (norm ? sheetPackedTimeMap.get(norm) : undefined) ||
+          'Selesai (Packing Reg)';
+        return {
+          ...nota,
+          isPacked: true,
+          packedAt: nota.packedAt || time,
+        };
+      }
+
+      return nota;
+    });
+  }, [notas, sheetRows, packedOrders]);
+
+  // Calculations for stats based on effectiveNotas
+  const totalNotas = effectiveNotas.length;
+  const packedCount = useMemo(() => effectiveNotas.filter((n) => n.isPacked).length, [effectiveNotas]);
   const pendingCount = totalNotas - packedCount;
   const progressPercent = totalNotas > 0 ? Math.round((packedCount / totalNotas) * 100) : 0;
 
-  // Today's statistics for active session
-  const localTodayStats = useMemo(() => {
-    const now = new Date();
-    const todayNotas = notas.filter((n) => {
-      if (n.createdAt) {
-        const d = new Date(n.createdAt);
-        if (!isNaN(d.getTime())) {
-          return (
-            d.getFullYear() === now.getFullYear() &&
-            d.getMonth() === now.getMonth() &&
-            d.getDate() === now.getDate()
-          );
-        }
-      }
-      const d = parseNotaDateTime(n.date, n.timestamp);
-      if (d && !isNaN(d.getTime())) {
-        return (
-          d.getFullYear() === now.getFullYear() &&
-          d.getMonth() === now.getMonth() &&
-          d.getDate() === now.getDate()
-        );
-      }
-      return true;
-    });
+  // Today's statistics for Google Sheet (Tab 'Nota Diproses' ↔ 'Packing Reg')
+  const sheetTodayStats = useMemo(() => {
+    const todayRows = sheetRows.filter((r) =>
+      isDateToday(r.adminDate, r.adminTime)
+    );
 
-    const totalToday = todayNotas.length;
-    const packedToday = todayNotas.filter((n) => n.isPacked).length;
+    const effectiveTodayRows = todayRows.length > 0 ? todayRows : sheetRows;
+    const totalToday = effectiveTodayRows.length;
+    const packedToday = effectiveTodayRows.filter((r) => r.isPacked).length;
+    const pendingToday = totalToday - packedToday;
+    const percentToday =
+      totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
+
+    return { totalToday, packedToday, pendingToday, percentToday, isFilteredByDate: todayRows.length > 0 };
+  }, [sheetRows]);
+
+  // Today's statistics for active session (using effectiveNotas)
+  const localTodayStats = useMemo(() => {
+    const todayNotas = effectiveNotas.filter((n) =>
+      isDateToday(n.date, n.timestamp, n.createdAt)
+    );
+
+    // If no notas match specific date parsing but notas exist, treat all current active session notas as today
+    const effectiveTodayNotas = todayNotas.length > 0 ? todayNotas : effectiveNotas;
+
+    const totalToday = effectiveTodayNotas.length;
+    const packedToday = effectiveTodayNotas.filter((n) => n.isPacked).length;
     const pendingToday = totalToday - packedToday;
     const percentToday =
       totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
 
     return { totalToday, packedToday, pendingToday, percentToday };
-  }, [notas]);
+  }, [effectiveNotas]);
 
   // Stale/Delayed pending notas analytics
   const delayedNotas = useMemo(() => {
-    return notas.filter((n) => isNotaDelayed(n, currentThreshold, nowMs));
-  }, [notas, currentThreshold, nowMs]);
+    return effectiveNotas.filter((n) => isNotaDelayed(n, currentThreshold, nowMs));
+  }, [effectiveNotas, currentThreshold, nowMs]);
 
   const delayedCount = delayedNotas.length;
 
@@ -380,7 +511,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
 
   // Filtered notas list
   const filteredNotas = useMemo(() => {
-    return notas.filter((nota) => {
+    return effectiveNotas.filter((nota) => {
       // Status filter
       if (statusFilter === 'pending' && nota.isPacked) return false;
       if (statusFilter === 'overdue' && !isNotaDelayed(nota, currentThreshold, nowMs)) return false;
@@ -400,7 +531,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
 
       return true;
     });
-  }, [notas, statusFilter, platformFilter, searchQuery, currentThreshold, nowMs]);
+  }, [effectiveNotas, statusFilter, platformFilter, searchQuery, currentThreshold, nowMs]);
 
   // Single scan submission
   const handleProcessScan = (rawCode?: string) => {
@@ -729,6 +860,15 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                   Tab: {sheetResolvedTab}
                 </span>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 flex items-center gap-1">
+                  <span>↔ Cocok:</span>
+                  <strong className="font-mono text-white">{sheetResolvedPackingTab}</strong>
+                  {sheetTotalPackingInSheet > 0 && (
+                    <span className="ml-0.5 px-1.5 py-0.2 bg-indigo-400/30 rounded-full text-[10px] text-indigo-200">
+                      {sheetTotalPackingInSheet} paket
+                    </span>
+                  )}
+                </span>
                 {accessToken ? (
                   <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -742,10 +882,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                 )}
               </div>
               <p className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-1.5">
-                <span>Database utama di Google Sheets:</span>
-                <code className="bg-slate-800 text-emerald-300 px-1.5 py-0.5 rounded text-[11px] font-mono border border-slate-700">
-                  {targetSpreadsheetId}
-                </code>
+                <span>Sinkronisasi otomatis dari sheet <strong>{sheetResolvedTab}</strong> dicocokkan langsung dengan data scan di sheet <strong>{sheetResolvedPackingTab}</strong></span>
                 {sheetLastFetchedAt && (
                   <span className="text-slate-400">• Diperbarui: {sheetLastFetchedAt.toLocaleTimeString('id-ID')}</span>
                 )}
@@ -1396,119 +1533,269 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
 
       {/* Main Table & Filter Tools */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden space-y-4 p-5 sm:p-6">
-        {/* Ringkasan Statistik Kecil di Atas Tabel Nota Diproses */}
+        {/* Ringkasan Statistik di Atas Tabel Nota Diproses */}
         <div
           id="mini-stats-local-table"
-          className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 sm:p-4"
+          className="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 shadow-2xs"
         >
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-200/80">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pb-2.5 mb-3 border-b border-slate-200/80">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="p-1.5 bg-indigo-100 text-indigo-800 rounded-lg">
                 <Calendar className="w-3.5 h-3.5" />
               </div>
               <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
                 Ringkasan Status Nota Hari Ini
               </span>
-              <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+              <span className="text-xs text-slate-500 font-medium hidden md:inline">
                 ({new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })})
               </span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-500">
-              {localTodayStats.totalToday} nota dalam sesi scan aktif
-            </span>
+
+            {/* Source Switcher if Google Sheets has data */}
+            {sheetRows.length > 0 && (
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200/80 shadow-2xs">
+                <button
+                  type="button"
+                  id="tab-today-source-sheet"
+                  onClick={() => setTodayStatsSource('sheet')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                    todayStatsSource === 'sheet'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <FileSpreadsheet className="w-3 h-3" />
+                  <span>Google Sheet ({sheetTodayStats.totalToday})</span>
+                </button>
+                <button
+                  type="button"
+                  id="tab-today-source-local"
+                  onClick={() => setTodayStatsSource('local')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                    todayStatsSource === 'local'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>Sesi Scan Lokal ({localTodayStats.totalToday})</span>
+                </button>
+              </div>
+            )}
+
+            {sheetRows.length === 0 && (
+              <span className="text-[11px] font-semibold text-slate-500">
+                {localTodayStats.totalToday} nota dalam sesi scan aktif
+              </span>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
-            {/* Total Nota Hari Ini */}
-            <div
-              id="card-local-today-total"
-              onClick={() => setStatusFilter('all')}
-              className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-2xs hover:border-indigo-300 transition-all cursor-pointer flex items-center justify-between group"
-              title="Tampilkan semua nota"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg shrink-0">
-                  <FileText className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                    Total Hari Ini
-                  </span>
-                  <div className="flex items-baseline gap-1 mt-0.5">
-                    <span className="text-xl font-black text-slate-900 leading-tight">
-                      {localTodayStats.totalToday}
-                    </span>
-                    <span className="text-xs text-slate-500 font-semibold">Nota</span>
-                  </div>
-                </div>
+          {/* Active Statistics Cards based on selected source */}
+          {todayStatsSource === 'sheet' && sheetRows.length > 0 ? (
+            <div>
+              <div className="flex items-center justify-between mb-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50/80 px-2.5 py-1 rounded-lg border border-emerald-200/60">
+                <span>
+                  Sumber Data: <strong>Sheet &quot;Nota Diproses&quot;</strong> dicocokkan langsung dengan <strong>Sheet &quot;Packing Reg&quot;</strong>
+                </span>
+                <span className="font-bold">
+                  {sheetTodayStats.percentToday}% Terpacking
+                </span>
               </div>
-              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                Semua
-              </span>
-            </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                {/* Total Sheet Hari Ini */}
+                <div
+                  id="card-sheet-today-total"
+                  onClick={() => handleFilterAndScrollSheet('all')}
+                  className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-2xs hover:border-emerald-300 transition-all cursor-pointer flex items-center justify-between group"
+                  title="Lihat semua riwayat nota di tabel Google Sheet"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg shrink-0">
+                      <FileSpreadsheet className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Total Nota Sheet
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-xl font-black text-slate-900 leading-tight">
+                          {sheetTodayStats.totalToday}
+                        </span>
+                        <span className="text-xs text-slate-500 font-semibold">Nota</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md group-hover:bg-emerald-50 group-hover:text-emerald-700 transition-colors">
+                    Lihat Tabel
+                  </span>
+                </div>
 
-            {/* Sudah Selesai */}
-            <div
-              id="card-local-today-packed"
-              onClick={() => setStatusFilter('packed')}
-              className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/90 shadow-2xs hover:border-emerald-300 transition-all cursor-pointer flex items-center justify-between group"
-              title="Filter nota sudah selesai"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg shrink-0">
-                  <CheckCircle2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-[11px] font-bold text-emerald-900 uppercase tracking-wider block">
-                    Sudah Selesai
-                  </span>
-                  <div className="flex items-baseline gap-1 mt-0.5">
-                    <span className="text-xl font-black text-emerald-800 leading-tight">
-                      {localTodayStats.packedToday}
-                    </span>
-                    <span className="text-xs text-emerald-700 font-semibold">Nota</span>
+                {/* Sudah Packing (Cocok dengan Packing Reg) */}
+                <div
+                  id="card-sheet-today-packed"
+                  onClick={() => handleFilterAndScrollSheet('packed')}
+                  className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/90 shadow-2xs hover:border-emerald-300 transition-all cursor-pointer flex items-center justify-between group"
+                  title="Filter nota yang sudah selesai dipacking"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg shrink-0">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-emerald-900 uppercase tracking-wider block">
+                        Sudah Dipacking
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-xl font-black text-emerald-800 leading-tight">
+                          {sheetTodayStats.packedToday}
+                        </span>
+                        <span className="text-xs text-emerald-700 font-semibold">Nota</span>
+                      </div>
+                    </div>
                   </div>
+                  <span className="text-[10px] font-bold text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded-full">
+                    {sheetTodayStats.percentToday}% Selesai
+                  </span>
                 </div>
-              </div>
-              <span className="text-[10px] font-bold text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded-full">
-                {localTodayStats.percentToday}% Selesai
-              </span>
-            </div>
 
-            {/* Pending */}
-            <div
-              id="card-local-today-pending"
-              onClick={() => setStatusFilter('pending')}
-              className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/90 shadow-2xs hover:border-amber-300 transition-all cursor-pointer flex items-center justify-between group"
-              title="Filter nota belum selesai (pending)"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-amber-100 text-amber-800 rounded-lg shrink-0">
-                  <Clock className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider block">
-                    Pending
-                  </span>
-                  <div className="flex items-baseline gap-1 mt-0.5">
-                    <span className="text-xl font-black text-amber-800 leading-tight">
-                      {localTodayStats.pendingToday}
-                    </span>
-                    <span className="text-xs text-amber-700 font-semibold">Nota</span>
+                {/* Belum Packing */}
+                <div
+                  id="card-sheet-today-pending"
+                  onClick={() => handleFilterAndScrollSheet('pending')}
+                  className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/90 shadow-2xs hover:border-amber-300 transition-all cursor-pointer flex items-center justify-between group"
+                  title="Filter nota yang belum dipacking"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-amber-100 text-amber-800 rounded-lg shrink-0">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider block">
+                        Belum Packing
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-xl font-black text-amber-800 leading-tight">
+                          {sheetTodayStats.pendingToday}
+                        </span>
+                        <span className="text-xs text-amber-700 font-semibold">Nota</span>
+                      </div>
+                    </div>
                   </div>
+                  <span
+                    className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      sheetTodayStats.pendingToday > 0
+                        ? 'bg-amber-200 text-amber-900'
+                        : 'bg-emerald-200 text-emerald-900'
+                    }`}
+                  >
+                    {sheetTodayStats.pendingToday > 0 ? 'Menunggu' : 'Beres'}
+                  </span>
                 </div>
               </div>
-              <span
-                className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                  localTodayStats.pendingToday > 0
-                    ? 'bg-amber-200 text-amber-900 animate-pulse'
-                    : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {localTodayStats.pendingToday > 0 ? 'Menunggu' : 'Beres'}
-              </span>
             </div>
-          </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-2 text-[11px] font-semibold text-slate-600 bg-slate-100/80 px-2.5 py-1 rounded-lg border border-slate-200/60">
+                <span>
+                  Sumber Data: <strong>Sesi Scan Antrian Lokal</strong> (Otomatis disinkronkan dengan status Packing Reg)
+                </span>
+                <span className="font-bold text-indigo-700">
+                  {localTodayStats.percentToday}% Selesai
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                {/* Total Nota Hari Ini */}
+                <div
+                  id="card-local-today-total"
+                  onClick={() => setStatusFilter('all')}
+                  className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-2xs hover:border-indigo-300 transition-all cursor-pointer flex items-center justify-between group"
+                  title="Tampilkan semua nota"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Total Hari Ini
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-xl font-black text-slate-900 leading-tight">
+                          {localTodayStats.totalToday}
+                        </span>
+                        <span className="text-xs text-slate-500 font-semibold">Nota</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                    Semua
+                  </span>
+                </div>
+
+                {/* Sudah Selesai */}
+                <div
+                  id="card-local-today-packed"
+                  onClick={() => setStatusFilter('packed')}
+                  className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/90 shadow-2xs hover:border-emerald-300 transition-all cursor-pointer flex items-center justify-between group"
+                  title="Filter nota sudah selesai"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg shrink-0">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-emerald-900 uppercase tracking-wider block">
+                        Sudah Selesai
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-xl font-black text-emerald-800 leading-tight">
+                          {localTodayStats.packedToday}
+                        </span>
+                        <span className="text-xs text-emerald-700 font-semibold">Nota</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded-full">
+                    {localTodayStats.percentToday}% Selesai
+                  </span>
+                </div>
+
+                {/* Pending */}
+                <div
+                  id="card-local-today-pending"
+                  onClick={() => setStatusFilter('pending')}
+                  className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/90 shadow-2xs hover:border-amber-300 transition-all cursor-pointer flex items-center justify-between group"
+                  title="Filter nota belum selesai (pending)"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-amber-100 text-amber-800 rounded-lg shrink-0">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider block">
+                        Pending
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-xl font-black text-amber-800 leading-tight">
+                          {localTodayStats.pendingToday}
+                        </span>
+                        <span className="text-xs text-amber-700 font-semibold">Nota</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      localTodayStats.pendingToday > 0
+                        ? 'bg-amber-200 text-amber-900 animate-pulse'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {localTodayStats.pendingToday > 0 ? 'Menunggu' : 'Beres'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Filter and Search Bar */}
@@ -1783,12 +2070,14 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                       {/* Packing Status Badge */}
                       <td className="py-3 px-4 text-center">
                         {nota.isPacked ? (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Sudah Packing</span>
+                          <div className="inline-flex flex-col items-center gap-0.5">
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Sudah Packing</span>
+                            </div>
                             {nota.packedAt && (
-                              <span className="text-[10px] font-normal text-emerald-700">
-                                ({nota.packedAt})
+                              <span className="text-[10px] font-semibold text-emerald-700">
+                                {nota.packedAt.includes('Packing Reg') ? '✓ Tercatat di Sheet Packing Reg' : nota.packedAt}
                               </span>
                             )}
                           </div>
@@ -1885,6 +2174,8 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
         resolvedTabName={sheetResolvedTab}
         selectedStatusFilter={sheetStatusFilter}
         onStatusFilterChange={setSheetStatusFilter}
+        packedOrders={packedOrders}
+        localNotas={notas}
       />
 
       {/* Confirmation Modal to Clear All Notas */}

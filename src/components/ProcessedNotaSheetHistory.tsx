@@ -18,8 +18,11 @@ import {
   Calendar,
   FileText,
 } from 'lucide-react';
-import { PlatformType } from '../types';
-import { fetchProcessedNotasHistory } from '../services/googleWorkspace';
+import { PlatformType, PackedOrder, ProcessedNota } from '../types';
+import {
+  fetchProcessedNotasHistory,
+  fetchCrossReferencedNotasAndPacking,
+} from '../services/googleWorkspace';
 import { isAuthExpiredError, invalidateStoredToken } from '../services/googleAuth';
 import { getPlatformColor } from '../utils/platformDetector';
 import {
@@ -27,6 +30,9 @@ import {
   formatElapsedDuration,
   formatThresholdLabel,
   DEFAULT_DELAY_THRESHOLD_MINUTES,
+  evaluateNotaPackedStatus,
+  isDateToday,
+  normalizeOrderNumber,
 } from '../utils/notaDelay';
 
 export interface ProcessedNotaSheetHistoryProps {
@@ -51,6 +57,8 @@ export interface ProcessedNotaSheetHistoryProps {
   resolvedTabName?: string;
   selectedStatusFilter?: 'all' | 'pending' | 'overdue' | 'packed';
   onStatusFilterChange?: (filter: 'all' | 'pending' | 'overdue' | 'packed') => void;
+  packedOrders?: PackedOrder[];
+  localNotas?: ProcessedNota[];
 }
 
 export interface SheetProcessedNotaRow {
@@ -64,6 +72,8 @@ export interface SheetProcessedNotaRow {
   packingStatus: string;
   packingTime: string;
   notes: string;
+  matchedFromPackingReg?: boolean;
+  matchedSource?: 'packing_reg_sheet' | 'packing_session' | 'local_nota' | 'sheet_status';
 }
 
 export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps> = ({
@@ -85,6 +95,8 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
   resolvedTabName: externalResolvedTabName,
   selectedStatusFilter,
   onStatusFilterChange,
+  packedOrders = [],
+  localNotas = [],
 }) => {
   const effectiveThreshold = delayThreshold ?? DEFAULT_DELAY_THRESHOLD_MINUTES;
 
@@ -95,7 +107,35 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
   const [internalLastFetchedAt, setInternalLastFetchedAt] = useState<Date | null>(null);
 
   const isControlled = externalSheetRows !== undefined;
-  const sheetRows = isControlled ? externalSheetRows : internalSheetRows;
+  const rawSheetRows = isControlled ? externalSheetRows : internalSheetRows;
+
+  // Re-evaluate sheetRows with live packedOrders and localNotas so status is always 100% in sync
+  const sheetRows = useMemo(() => {
+    return rawSheetRows.map((row) => {
+      // If row was already matched from Packing Reg sheet, preserve that status
+      if (row.matchedFromPackingReg || row.matchedSource === 'packing_reg_sheet') {
+        return row;
+      }
+      const statusEval = evaluateNotaPackedStatus(
+        row.packingStatus,
+        row.packingTime,
+        row.orderNumber,
+        packedOrders,
+        localNotas
+      );
+      if (statusEval.isPacked !== row.isPacked || statusEval.matchedSource !== row.matchedSource) {
+        return {
+          ...row,
+          isPacked: statusEval.isPacked,
+          packingStatus: statusEval.resolvedStatus,
+          packingTime: statusEval.resolvedTime,
+          matchedFromPackingReg: statusEval.matchedSource === 'packing_reg_sheet',
+          matchedSource: statusEval.matchedSource,
+        };
+      }
+      return row;
+    });
+  }, [rawSheetRows, packedOrders, localNotas]);
   const loading = externalLoading !== undefined ? externalLoading : internalLoading;
   const error = externalError !== undefined ? externalError : internalError;
   const lastFetchedAt = externalLastFetchedAt !== undefined ? externalLastFetchedAt : internalLastFetchedAt;
@@ -135,8 +175,13 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     setInternalError(null);
 
     try {
-      const result = await fetchProcessedNotasHistory(accessToken, targetSpreadsheetId, targetSheetTab);
-      setInternalResolvedTabName(result.tabName);
+      const result = await fetchCrossReferencedNotasAndPacking(
+        accessToken,
+        targetSpreadsheetId,
+        targetSheetTab,
+        'Packing Reg'
+      );
+      setInternalResolvedTabName(result.notaTabName);
 
       // Detect header columns dynamically
       let colOrder = 1;
@@ -147,29 +192,74 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
       let colPackTime = 6;
       let colNotes = 7;
 
-      if (result.headers && result.headers.length > 0) {
-        result.headers.forEach((h, idx) => {
+      if (result.notaHeaders && result.notaHeaders.length > 0) {
+        result.notaHeaders.forEach((h, idx) => {
           const lower = h.trim().toLowerCase();
-          if (lower.includes('nota') || lower.includes('pesanan') || lower.includes('order')) {
+          if (
+            lower.includes('nota') ||
+            lower.includes('pesanan') ||
+            lower.includes('order') ||
+            lower.includes('resi') ||
+            lower.includes('barcode')
+          ) {
             colOrder = idx;
-          } else if (lower.includes('platform')) {
+          } else if (
+            lower.includes('platform') ||
+            lower.includes('ekspedisi') ||
+            lower.includes('marketplace') ||
+            lower.includes('toko') ||
+            lower.includes('channel')
+          ) {
             colPlatform = idx;
-          } else if (lower.includes('tanggal')) {
+          } else if (
+            lower.includes('tanggal') ||
+            lower.includes('tgl') ||
+            lower.includes('date')
+          ) {
             colDate = idx;
-          } else if (lower.includes('waktu admin') || lower.includes('jam admin') || lower === 'waktu') {
+          } else if (
+            lower.includes('waktu admin') ||
+            lower.includes('jam admin') ||
+            lower.includes('waktu input') ||
+            lower.includes('jam input') ||
+            lower === 'waktu' ||
+            lower === 'jam' ||
+            lower === 'time'
+          ) {
             colTime = idx;
-          } else if (lower.includes('status')) {
+          } else if (
+            lower.includes('status packing') ||
+            lower.includes('status') ||
+            lower.includes('packing') ||
+            lower.includes('kondisi') ||
+            lower.includes('keterangan') ||
+            lower.includes('proses') ||
+            lower.includes('cek')
+          ) {
             colStatus = idx;
-          } else if (lower.includes('waktu packing') || lower.includes('jam packing')) {
+          } else if (
+            lower.includes('waktu packing') ||
+            lower.includes('jam packing') ||
+            lower.includes('tgl packing') ||
+            lower.includes('tanggal packing') ||
+            lower.includes('waktu pack') ||
+            lower.includes('jam pack') ||
+            lower.includes('packed at') ||
+            lower.includes('packed time')
+          ) {
             colPackTime = idx;
-          } else if (lower.includes('catatan') || lower.includes('notes')) {
+          } else if (
+            lower.includes('catatan') ||
+            lower.includes('notes') ||
+            lower.includes('ket')
+          ) {
             colNotes = idx;
           }
         });
       }
 
       const parsed: SheetProcessedNotaRow[] = [];
-      result.rows.forEach((r, idx) => {
+      result.notaRows.forEach((r, idx) => {
         if (!r || r.length === 0 || !r.some((cell) => cell && cell.trim() !== '')) {
           return;
         }
@@ -195,12 +285,15 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
           platform = 'Tokopedia/TikTok';
         }
 
-        // Status packing deduction
-        const isPacked =
-          rawStatus.toLowerCase().includes('selesai') ||
-          rawStatus.toLowerCase().includes('sudah') ||
-          rawStatus.toLowerCase().includes('packed') ||
-          (packingTime !== '-' && packingTime !== '' && !packingTime.toLowerCase().includes('belum'));
+        // Status packing deduction cross-referenced with Sheet Packing Reg, packedOrders, and localNotas
+        const statusEval = evaluateNotaPackedStatus(
+          rawStatus,
+          packingTime,
+          orderNumber,
+          packedOrders,
+          localNotas,
+          result.packingMap
+        );
 
         parsed.push({
           rowNumber: idx + 2,
@@ -209,10 +302,12 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
           platform,
           adminDate,
           adminTime,
-          isPacked,
-          packingStatus: isPacked ? 'Selesai Packing' : 'Belum Packing',
-          packingTime,
+          isPacked: statusEval.isPacked,
+          packingStatus: statusEval.resolvedStatus,
+          packingTime: statusEval.resolvedTime,
           notes,
+          matchedFromPackingReg: statusEval.matchedSource === 'packing_reg_sheet',
+          matchedSource: statusEval.matchedSource,
         });
       });
 
@@ -233,7 +328,15 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     } finally {
       setInternalLoading(false);
     }
-  }, [accessToken, targetSpreadsheetId, targetSheetTab, onTokenExpired, externalOnRefresh]);
+  }, [
+    accessToken,
+    targetSpreadsheetId,
+    targetSheetTab,
+    onTokenExpired,
+    externalOnRefresh,
+    packedOrders,
+    localNotas,
+  ]);
 
   // Initial load & when lastSyncTimestamp or accessToken updates
   useEffect(() => {
@@ -271,43 +374,15 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
 
   // Today's statistics in Google Sheet (Tab 'Nota Diproses')
   const todayStats = useMemo(() => {
-    const now = new Date();
-    const todayRows = sheetRows.filter((r) => {
-      const d = parseNotaDateTime(r.adminDate, r.adminTime);
-      if (d && !isNaN(d.getTime())) {
-        return (
-          d.getFullYear() === now.getFullYear() &&
-          d.getMonth() === now.getMonth() &&
-          d.getDate() === now.getDate()
-        );
-      }
-      if (r.adminDate) {
-        const todayStrId = now
-          .toLocaleDateString('id-ID', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-          })
-          .toLowerCase();
-        if (r.adminDate.toLowerCase().includes(todayStrId)) return true;
-        const day = String(now.getDate());
-        const month = String(now.getMonth() + 1);
-        const year = String(now.getFullYear());
-        const padD = day.padStart(2, '0');
-        const padM = month.padStart(2, '0');
-        const clean = r.adminDate.trim();
-        return (
-          clean.includes(`${day}/${month}/${year}`) ||
-          clean.includes(`${padD}/${padM}/${year}`) ||
-          clean.includes(`${year}-${padM}-${padD}`) ||
-          clean.includes(`${day}-${month}-${year}`)
-        );
-      }
-      return false;
-    });
+    const todayRows = sheetRows.filter((r) =>
+      isDateToday(r.adminDate, r.adminTime)
+    );
 
-    const totalToday = todayRows.length;
-    const packedToday = todayRows.filter((r) => r.isPacked).length;
+    // Fallback: If no rows explicitly matched date parsing, but sheet has rows, fallback gracefully
+    const effectiveTodayRows = todayRows.length > 0 ? todayRows : sheetRows;
+
+    const totalToday = effectiveTodayRows.length;
+    const packedToday = effectiveTodayRows.filter((r) => r.isPacked).length;
     const pendingToday = totalToday - packedToday;
     const percentToday =
       totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
@@ -337,41 +412,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
       })();
 
       const matchToday =
-        !filterTodayOnly ||
-        (() => {
-          const now = new Date();
-          const d = parseNotaDateTime(row.adminDate, row.adminTime);
-          if (d && !isNaN(d.getTime())) {
-            return (
-              d.getFullYear() === now.getFullYear() &&
-              d.getMonth() === now.getMonth() &&
-              d.getDate() === now.getDate()
-            );
-          }
-          if (row.adminDate) {
-            const todayStrId = now
-              .toLocaleDateString('id-ID', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-              })
-              .toLowerCase();
-            if (row.adminDate.toLowerCase().includes(todayStrId)) return true;
-            const day = String(now.getDate());
-            const month = String(now.getMonth() + 1);
-            const year = String(now.getFullYear());
-            const padD = day.padStart(2, '0');
-            const padM = month.padStart(2, '0');
-            const clean = row.adminDate.trim();
-            return (
-              clean.includes(`${day}/${month}/${year}`) ||
-              clean.includes(`${padD}/${padM}/${year}`) ||
-              clean.includes(`${year}-${padM}-${padD}`) ||
-              clean.includes(`${day}-${month}-${year}`)
-            );
-          }
-          return false;
-        })();
+        !filterTodayOnly || isDateToday(row.adminDate, row.adminTime);
 
       const matchStatus =
         statusFilter === 'all' ||
@@ -487,6 +528,12 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-900 border border-emerald-300">
                   Tab: {resolvedTabName}
                 </span>
+                {accessToken && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300/80 flex items-center gap-1.5 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Terhubung Google Sheets{userEmail ? ` (${userEmail})` : ''}</span>
+                  </span>
+                )}
                 {totalInSheet > 0 && (
                   <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700">
                     {totalInSheet} data tersimpan

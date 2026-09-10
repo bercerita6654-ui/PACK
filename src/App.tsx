@@ -445,8 +445,55 @@ export default function App() {
     }
   }, [allLogs]);
 
+  // Helper to normalize order / resi string for robust matching across systems
+  const normalizeOrderNumber = useCallback((str: string): string => {
+    return (str || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s\-_#/.]/g, '');
+  }, []);
+
+  // Continuous auto-sync: Automatically mark matching processed notas as packed when packedOrders exists or changes
+  useEffect(() => {
+    if (packedOrders.length === 0 || processedNotas.length === 0) return;
+
+    const packedExactSet = new Set<string>(
+      packedOrders.map((p) => p.orderNumber.trim().toUpperCase())
+    );
+    const packedNormMap = new Map<string, PackedOrder>();
+    packedOrders.forEach((p) => {
+      const norm = normalizeOrderNumber(p.orderNumber);
+      if (norm) packedNormMap.set(norm, p);
+    });
+
+    let hasChanges = false;
+    const updated = processedNotas.map((nota) => {
+      const upper = nota.orderNumber.trim().toUpperCase();
+      const norm = normalizeOrderNumber(nota.orderNumber);
+      const isExactMatch = packedExactSet.has(upper);
+      const normMatch = packedNormMap.get(norm);
+
+      if ((isExactMatch || normMatch) && !nota.isPacked) {
+        hasChanges = true;
+        const matchTimestamp = normMatch ? normMatch.timestamp : undefined;
+        return {
+          ...nota,
+          isPacked: true,
+          packedAt: nota.packedAt || matchTimestamp || 'Selesai',
+        };
+      }
+      return nota;
+    });
+
+    if (hasChanges) {
+      setProcessedNotas(updated);
+    }
+  }, [packedOrders, normalizeOrderNumber]);
+
   // Add scanned packed order
   const handleAddPackedOrder = (orderNumber: string, platform: PlatformType): boolean => {
+    const upper = orderNumber.trim().toUpperCase();
+    const norm = normalizeOrderNumber(orderNumber);
     const now = new Date();
     const timeStr = now.toLocaleTimeString('id-ID', {
       hour: '2-digit',
@@ -456,7 +503,7 @@ export default function App() {
 
     const newOrder: PackedOrder = {
       id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      orderNumber: orderNumber.trim().toUpperCase(),
+      orderNumber: upper,
       platform,
       timestamp: timeStr,
       date: appData.date,
@@ -466,11 +513,14 @@ export default function App() {
 
     // Automatically mark matching processed nota as packed
     setProcessedNotas((prev) =>
-      prev.map((nota) =>
-        nota.orderNumber.toUpperCase() === orderNumber.trim().toUpperCase()
-          ? { ...nota, isPacked: true, packedAt: timeStr }
-          : nota
-      )
+      prev.map((nota) => {
+        const notaUpper = nota.orderNumber.trim().toUpperCase();
+        const notaNorm = normalizeOrderNumber(nota.orderNumber);
+        if (notaUpper === upper || (norm && notaNorm === norm)) {
+          return { ...nota, isPacked: true, packedAt: timeStr };
+        }
+        return nota;
+      })
     );
 
     return true;
@@ -571,7 +621,12 @@ export default function App() {
       second: '2-digit',
     });
 
-    const matchingPacked = packedOrders.find((p) => p.orderNumber.toUpperCase() === upper);
+    const norm = normalizeOrderNumber(upper);
+    const matchingPacked = packedOrders.find((p) => {
+      const pUpper = p.orderNumber.trim().toUpperCase();
+      const pNorm = normalizeOrderNumber(p.orderNumber);
+      return pUpper === upper || (norm && pNorm === norm);
+    });
 
     const newNota: ProcessedNota = {
       id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -604,6 +659,12 @@ export default function App() {
     const packedUpperMap = new Map<string, PackedOrder>(
       packedOrders.map((p) => [p.orderNumber.toUpperCase(), p])
     );
+    const packedNormMap = new Map<string, PackedOrder>();
+    packedOrders.forEach((p) => {
+      const pNorm = normalizeOrderNumber(p.orderNumber);
+      if (pNorm) packedNormMap.set(pNorm, p);
+    });
+
     const batchSeen = new Set<string>();
     const toAdd: ProcessedNota[] = [];
     let duplicates = 0;
@@ -612,12 +673,14 @@ export default function App() {
       const item = items[i];
       const upper = item.orderNumber.trim().toUpperCase();
       if (!upper) continue;
+      const itemNorm = normalizeOrderNumber(upper);
 
       const isDup = existingUpper.has(upper) || batchSeen.has(upper);
+      const match = packedUpperMap.get(upper) || (itemNorm ? packedNormMap.get(itemNorm) : undefined);
+
       if (isDup) {
         duplicates++;
         if (!skipDuplicates) {
-          const match = packedUpperMap.get(upper);
           toAdd.push({
             id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
             orderNumber: upper,
@@ -633,7 +696,6 @@ export default function App() {
       } else {
         existingUpper.add(upper);
         batchSeen.add(upper);
-        const match = packedUpperMap.get(upper);
         toAdd.push({
           id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
           orderNumber: upper,
@@ -1074,7 +1136,7 @@ export default function App() {
   // Sync Processed Notas to Google Sheet (Tab: "Nota Diproses", Spreadsheet: 1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI)
   const handleSyncNotasToGoogleSheet = async () => {
     if (processedNotas.length === 0) {
-      showToast('Belum ada nota diproses untuk disimpan.', 'warning');
+      showToast('Belum ada nota diproses di antrean lokal untuk disimpan.', 'warning');
       return;
     }
 
@@ -1094,15 +1156,16 @@ export default function App() {
     setWorkspaceConfirmModal({
       isOpen: true,
       title: 'Simpan Data Nota Diproses ke Google Sheet',
-      description: `Menyimpan ${processedNotas.length} data nota admin ke tab "${targetTab}". Sistem otomatis mencegah duplikasi jika nomor nota sudah ada di sheet.`,
+      description: `Menyimpan ${processedNotas.length} data nota admin ke tab "${targetTab}". Sistem otomatis mencegah duplikasi jika nomor nota sudah ada di sheet. Setelah berhasil disimpan, seluruh nota di antrean sesi scan lokal akan otomatis terhapus/dikosongkan.`,
       spreadsheetName: `Google Spreadsheet (${targetTab})`,
       spreadsheetUrl: targetSheetUrl,
       details: [
         { label: 'Tab Tujuan', value: targetTab },
-        { label: 'Total Nota', value: `${processedNotas.length} nota` },
+        { label: 'Total Nota Disimpan', value: `${processedNotas.length} nota` },
         { label: 'Sudah Packing', value: `${packedCount} nota` },
         { label: 'Belum Packing', value: `${pendingCount} nota` },
-        { label: 'Pencegahan Duplikat', value: 'Aktif (Nota ganda akan otomatis dilewati)' },
+        { label: 'Pencegahan Duplikat', value: 'Aktif (Nota ganda otomatis dilewati)' },
+        { label: 'Setelah Disimpan', value: 'Otomatis terhapus dari sesi scan lokal' },
       ],
       action: async () => {
         setIsWorkspaceSubmitting(true);
@@ -1138,19 +1201,22 @@ export default function App() {
             }
           }
 
+          // Otomatis hapus / kosongkan daftar nota dari sesi scan lokal setelah tersimpan ke Google Sheet
+          setProcessedNotas([]);
+
           if (saveResult.added > 0 && saveResult.skippedDuplicates === 0) {
             showToast(
-              `${saveResult.added} nota berhasil disimpan ke tab "${saveResult.targetSheet}" Google Sheet!`,
+              `${saveResult.added} nota berhasil disimpan ke tab "${saveResult.targetSheet}" Google Sheet! Sesi scan lokal otomatis dikosongkan.`,
               'success'
             );
           } else if (saveResult.added > 0 && saveResult.skippedDuplicates > 0) {
             showToast(
-              `${saveResult.added} nota baru disimpan. ${saveResult.skippedDuplicates} nota dilewati karena sudah ada di sheet "${saveResult.targetSheet}".`,
+              `${saveResult.added} nota baru disimpan. ${saveResult.skippedDuplicates} nota dilewati karena sudah ada di sheet "${saveResult.targetSheet}". Sesi scan lokal otomatis dikosongkan.`,
               'success'
             );
           } else {
             showToast(
-              `Semua ${saveResult.skippedDuplicates} nota sudah ada sebelumnya di sheet "${saveResult.targetSheet}". Tidak ada data ganda yang disimpan.`,
+              `Semua ${saveResult.skippedDuplicates} nota sudah ada sebelumnya di sheet "${saveResult.targetSheet}". Sesi scan lokal otomatis dikosongkan.`,
               'info'
             );
           }
@@ -1280,6 +1346,7 @@ export default function App() {
           /* Scan Nota Diproses Admin Section */
           <ProcessedNotaSection
             notas={processedNotas}
+            packedOrders={packedOrders}
             onAddNota={handleAddProcessedNota}
             onAddNotasBatch={handleAddProcessedNotasBatch}
             onRemoveNota={handleRemoveProcessedNota}

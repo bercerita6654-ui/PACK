@@ -1,4 +1,4 @@
-import { ProcessedNota } from '../types';
+import { ProcessedNota, PackedOrder } from '../types';
 
 /**
  * Batas waktu default pengingat jika nota belum di-packing adalah 1 hari (24 jam = 1440 menit)
@@ -18,6 +18,294 @@ export const DELAY_THRESHOLD_OPTIONS: DelayThresholdOption[] = [
   { value: 2880, label: '2 Hari' },
   { value: 4320, label: '3 Hari' },
 ];
+
+/**
+ * Normalizes an order / resi string for robust matching across systems.
+ * Strips whitespace, dashes, underscores, slashes, asterisks (* from barcodes), quotes, and symbols.
+ */
+export function normalizeOrderNumber(str?: string): string {
+  return (str || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s\-_#/.*'"\\,;:[\]()]/g, '');
+}
+
+export interface PackingRegRecord {
+  orderNumber: string;
+  platform?: string;
+  date?: string;
+  timestamp?: string;
+  status?: string;
+  rawRow?: string[];
+}
+
+/**
+ * Evaluates whether a nota is packed based on sheet raw status, packing time,
+ * order number, active session packed orders / processed notas, AND
+ * cross-referencing with the 'Packing Reg' sheet.
+ */
+export function evaluateNotaPackedStatus(
+  rawStatus: string,
+  packingTime: string,
+  orderNumber: string,
+  packedOrders?: PackedOrder[],
+  localNotas?: ProcessedNota[],
+  packingRegOrders?: (PackingRegRecord | string)[] | Map<string, PackingRegRecord>
+): {
+  isPacked: boolean;
+  resolvedStatus: string;
+  resolvedTime: string;
+  matchedSource?: 'packing_reg_sheet' | 'packing_session' | 'local_nota' | 'sheet_status';
+} {
+  const normOrder = normalizeOrderNumber(orderNumber);
+  const exactOrder = (orderNumber || '').trim().toUpperCase();
+
+  // 1. Cross-reference with 'Packing Reg' sheet records (Sheet "Packing Reg")
+  if (packingRegOrders) {
+    let match: PackingRegRecord | undefined;
+
+    if (packingRegOrders instanceof Map) {
+      match =
+        packingRegOrders.get(exactOrder) ||
+        (normOrder ? packingRegOrders.get(normOrder) : undefined);
+
+      // Also try with stripped leading/trailing symbols if not matched directly
+      if (!match && exactOrder.length >= 6) {
+        for (const [key, val] of packingRegOrders.entries()) {
+          if (
+            key === exactOrder ||
+            key === normOrder ||
+            (normOrder && key.includes(normOrder)) ||
+            (normOrder && normOrder.includes(key) && key.length >= 6)
+          ) {
+            match = val;
+            break;
+          }
+        }
+      }
+    } else if (Array.isArray(packingRegOrders)) {
+      match = packingRegOrders.find((p) => {
+        if (typeof p === 'string') {
+          const pExact = p.trim().toUpperCase();
+          const pNorm = normalizeOrderNumber(p);
+          return (
+            pExact === exactOrder ||
+            (normOrder && pNorm === normOrder) ||
+            (normOrder && pNorm && (pNorm.includes(normOrder) || normOrder.includes(pNorm)))
+          );
+        }
+        const pExact = (p.orderNumber || '').trim().toUpperCase();
+        const pNorm = normalizeOrderNumber(p.orderNumber);
+        return (
+          pExact === exactOrder ||
+          (normOrder && pNorm === normOrder) ||
+          (normOrder && pNorm && (pNorm.includes(normOrder) || normOrder.includes(pNorm)))
+        );
+      }) as PackingRegRecord | undefined;
+    }
+
+    if (match) {
+      const matchObj = typeof match === 'string' ? { orderNumber: match } : match;
+      const scanTime = matchObj.timestamp && matchObj.timestamp !== '-' ? matchObj.timestamp : '';
+      const scanDate = matchObj.date && matchObj.date !== '-' ? matchObj.date : '';
+      const fallbackTime = scanTime
+        ? scanDate
+          ? `${scanDate} ${scanTime}`
+          : scanTime
+        : 'Selesai (Packing Reg)';
+
+      return {
+        isPacked: true,
+        resolvedStatus: 'Selesai Packing',
+        resolvedTime: packingTime && packingTime !== '-' ? packingTime : fallbackTime,
+        matchedSource: 'packing_reg_sheet',
+      };
+    }
+  }
+
+  // 2. Cross-reference with packedOrders (scanned packages in Packing session)
+  if (packedOrders && packedOrders.length > 0) {
+    const match = packedOrders.find((p) => {
+      const pExact = p.orderNumber.trim().toUpperCase();
+      const pNorm = normalizeOrderNumber(p.orderNumber);
+      return (
+        pExact === exactOrder ||
+        (normOrder && pNorm === normOrder) ||
+        (normOrder && pNorm && (pNorm.includes(normOrder) || normOrder.includes(pNorm)))
+      );
+    });
+    if (match) {
+      return {
+        isPacked: true,
+        resolvedStatus: 'Selesai Packing',
+        resolvedTime: packingTime && packingTime !== '-' ? packingTime : match.timestamp,
+        matchedSource: 'packing_session',
+      };
+    }
+  }
+
+  // 3. Cross-reference with localNotas marked as isPacked
+  if (localNotas && localNotas.length > 0) {
+    const match = localNotas.find((n) => {
+      const nExact = n.orderNumber.trim().toUpperCase();
+      const nNorm = normalizeOrderNumber(n.orderNumber);
+      return (
+        (nExact === exactOrder ||
+          (normOrder && nNorm === normOrder) ||
+          (normOrder && nNorm && (nNorm.includes(normOrder) || normOrder.includes(nNorm)))) &&
+        n.isPacked
+      );
+    });
+    if (match) {
+      return {
+        isPacked: true,
+        resolvedStatus: 'Selesai Packing',
+        resolvedTime: packingTime && packingTime !== '-' ? packingTime : match.packedAt || 'Selesai',
+        matchedSource: 'local_nota',
+      };
+    }
+  }
+
+  // 4. Evaluate rawStatus string from Google Sheets
+  const s = (rawStatus || '').trim().toLowerCase();
+  const t = (packingTime || '').trim().toLowerCase();
+
+  const isNegated =
+    s.includes('belum') ||
+    s.includes('tidak') ||
+    s.includes('batal') ||
+    s.includes('cancel') ||
+    s.includes('pending') ||
+    s.includes('menunggu') ||
+    s.includes('antri');
+
+  const isAffirmative =
+    s.includes('selesai') ||
+    s.includes('sudah') ||
+    s.includes('packed') ||
+    s.includes('terpacking') ||
+    s.includes('dipacking') ||
+    s.includes('packing') ||
+    s.includes('beres') ||
+    s.includes('siap') ||
+    s.includes('kirim') ||
+    s.includes('terkirim') ||
+    s.includes('done') ||
+    s.includes('ok') ||
+    s.includes('yes') ||
+    s.includes('true') ||
+    s === 'y' ||
+    s === 'v' ||
+    s === '✓' ||
+    s === '1';
+
+  if (isAffirmative && !isNegated) {
+    return {
+      isPacked: true,
+      resolvedStatus: 'Selesai Packing',
+      resolvedTime: packingTime && packingTime !== '-' ? packingTime : '-',
+      matchedSource: 'sheet_status',
+    };
+  }
+
+  // 5. Check packingTime column
+  if (
+    t &&
+    t !== '-' &&
+    !t.includes('belum') &&
+    !t.includes('tidak') &&
+    !t.includes('batal') &&
+    !t.includes('pending')
+  ) {
+    return {
+      isPacked: true,
+      resolvedStatus: 'Selesai Packing',
+      resolvedTime: packingTime,
+      matchedSource: 'sheet_status',
+    };
+  }
+
+  return {
+    isPacked: false,
+    resolvedStatus: 'Belum Packing',
+    resolvedTime: '-',
+  };
+}
+
+/**
+ * Checks whether a given date or timestamp is from today.
+ */
+export function isDateToday(
+  dateStr?: string,
+  timeStr?: string,
+  createdAtMs?: number
+): boolean {
+  const now = new Date();
+
+  if (createdAtMs && !isNaN(createdAtMs) && createdAtMs > 0) {
+    const cd = new Date(createdAtMs);
+    if (!isNaN(cd.getTime())) {
+      return (
+        cd.getFullYear() === now.getFullYear() &&
+        cd.getMonth() === now.getMonth() &&
+        cd.getDate() === now.getDate()
+      );
+    }
+  }
+
+  if (dateStr && dateStr !== '-') {
+    const d = parseNotaDateTime(dateStr, timeStr);
+    if (d && !isNaN(d.getTime())) {
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    }
+
+    const clean = dateStr.trim().toLowerCase();
+    const day = String(now.getDate());
+    const month = String(now.getMonth() + 1);
+    const year = String(now.getFullYear());
+    const padD = day.padStart(2, '0');
+    const padM = month.padStart(2, '0');
+
+    const monthNames = [
+      'januari',
+      'februari',
+      'maret',
+      'april',
+      'mei',
+      'juni',
+      'juli',
+      'agustus',
+      'september',
+      'oktober',
+      'november',
+      'desember',
+    ];
+    const curMonthName = monthNames[now.getMonth()];
+
+    if (
+      clean.includes(curMonthName) &&
+      (clean.includes(day) || clean.includes(padD)) &&
+      clean.includes(year)
+    ) {
+      return true;
+    }
+
+    if (
+      clean.includes(`${padD}/${padM}/${year}`) ||
+      clean.includes(`${day}/${month}/${year}`) ||
+      clean.includes(`${year}-${padM}-${padD}`) ||
+      clean.includes(`${padD}-${padM}-${year}`)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 /**
  * Format label threshold untuk tampilan teks yang rapi dan mudah dibaca

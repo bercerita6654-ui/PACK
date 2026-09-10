@@ -228,6 +228,12 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                   Tab: {resolvedTabName}
                 </span>
+                {accessToken && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300/80 flex items-center gap-1.5 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Terhubung Google Sheets{userEmail ? ` (${userEmail})` : ''}</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
                 <span>Spreadsheet:</span>

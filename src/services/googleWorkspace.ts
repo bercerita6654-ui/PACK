@@ -1,5 +1,6 @@
 export { isAuthExpiredError, invalidateStoredToken } from './googleAuth';
 import { isAuthExpiredError } from './googleAuth';
+import { normalizeOrderNumber, PackingRegRecord } from '../utils/notaDelay';
 
 export interface DriveSpreadsheetItem {
   id: string;
@@ -504,6 +505,151 @@ export async function fetchProcessedNotasHistory(
   const rows = values.length > 1 ? values.slice(1).map((r: any[]) => r.map((c) => String(c ?? ''))) : [];
 
   return { tabName: matchedTab, headers, rows };
+}
+
+export interface CrossReferencedNotasResult {
+  notaTabName: string;
+  packingTabName: string;
+  notaHeaders: string[];
+  notaRows: string[][];
+  packingHeaders: string[];
+  packingRows: string[][];
+  packingMap: Map<string, PackingRegRecord>;
+  totalPackingCount: number;
+}
+
+/**
+ * Simultaneously fetch both 'Nota Diproses' (unpacked/admin notas) and 'Packing Reg' (packed orders)
+ * and build a normalized lookup map to cross-reference packed orders seamlessly.
+ */
+export async function fetchCrossReferencedNotasAndPacking(
+  accessToken: string,
+  spreadsheetId: string,
+  targetNotaTab: string = 'Nota Diproses',
+  targetPackingTab: string = 'Packing Reg'
+): Promise<CrossReferencedNotasResult> {
+  const [notaResult, packingResult] = await Promise.allSettled([
+    fetchProcessedNotasHistory(accessToken, spreadsheetId, targetNotaTab),
+    fetchPackingRegHistory(accessToken, spreadsheetId, targetPackingTab),
+  ]);
+
+  const notaData =
+    notaResult.status === 'fulfilled'
+      ? notaResult.value
+      : { tabName: targetNotaTab, headers: [], rows: [] };
+
+  const packingData =
+    packingResult.status === 'fulfilled'
+      ? packingResult.value
+      : { tabName: targetPackingTab, headers: [], rows: [] };
+
+  if (notaResult.status === 'rejected' && isAuthExpiredError(notaResult.reason)) {
+    throw notaResult.reason;
+  }
+  if (packingResult.status === 'rejected' && isAuthExpiredError(packingResult.reason)) {
+    throw packingResult.reason;
+  }
+
+  // Build packingMap from packingData
+  const packingMap = new Map<string, PackingRegRecord>();
+
+  let colOrder = 1;
+  let colPlatform = 2;
+  let colDate = 3;
+  let colTime = 4;
+  let colStatus = 5;
+
+  if (packingData.headers && packingData.headers.length > 0) {
+    packingData.headers.forEach((h, idx) => {
+      const lower = h.trim().toLowerCase();
+      if (
+        lower.includes('pesanan') ||
+        lower.includes('resi') ||
+        lower.includes('order') ||
+        lower.includes('nota') ||
+        lower.includes('barcode')
+      ) {
+        colOrder = idx;
+      } else if (
+        lower.includes('platform') ||
+        lower.includes('ekspedisi') ||
+        lower.includes('marketplace')
+      ) {
+        colPlatform = idx;
+      } else if (
+        lower.includes('tanggal') ||
+        lower.includes('tgl') ||
+        lower.includes('date')
+      ) {
+        colDate = idx;
+      } else if (
+        lower.includes('waktu') ||
+        lower.includes('jam') ||
+        lower.includes('time') ||
+        lower.includes('scan')
+      ) {
+        colTime = idx;
+      } else if (
+        lower.includes('status') ||
+        lower.includes('kondisi')
+      ) {
+        colStatus = idx;
+      }
+    });
+  }
+
+  packingData.rows.forEach((r) => {
+    if (!r || r.length === 0 || !r.some((c) => c && c.trim() !== '')) return;
+
+    const orderNumber = (r[colOrder] ?? r[1] ?? '').trim();
+    const platform = (r[colPlatform] ?? r[2] ?? '').trim();
+    const date = (r[colDate] ?? r[3] ?? '-').trim();
+    const timestamp = (r[colTime] ?? r[4] ?? '-').trim();
+    const status = (r[colStatus] ?? r[5] ?? 'Selesai Packing').trim();
+
+    const record: PackingRegRecord = {
+      orderNumber: orderNumber || 'PACKED',
+      platform,
+      date,
+      timestamp,
+      status,
+      rawRow: r,
+    };
+
+    if (orderNumber) {
+      const exactUpper = orderNumber.toUpperCase();
+      const normalized = normalizeOrderNumber(orderNumber);
+
+      packingMap.set(exactUpper, record);
+      if (normalized) {
+        packingMap.set(normalized, record);
+      }
+    }
+
+    // Also index any cell in the row that could be an order number, resi, or barcode
+    r.forEach((cell) => {
+      const val = (cell || '').trim();
+      if (val && val.length >= 5 && !val.includes(' ') && !/^(drop|pickup|selesai|packing|beres|spx|jne|jnt|idx|ninja)$/i.test(val)) {
+        const u = val.toUpperCase();
+        const n = normalizeOrderNumber(val);
+        if (!packingMap.has(u)) packingMap.set(u, record);
+        if (n && !packingMap.has(n)) packingMap.set(n, record);
+      }
+    });
+  });
+
+  return {
+    notaTabName: notaData.tabName,
+    packingTabName: packingData.tabName,
+    notaHeaders: notaData.headers,
+    notaRows: notaData.rows,
+    packingHeaders: packingData.headers,
+    packingRows: packingData.rows,
+    packingMap,
+    totalPackingCount: packingData.rows.filter(
+      (r) => r && r.some((c) => c && c.trim() !== '')
+    ).length,
+  };
 }
 
 export interface AppendProcessedNotasResult {
