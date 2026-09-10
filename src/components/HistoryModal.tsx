@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { parseCSV } from '../utils/csv';
 import { fetchSheetValues, getSpreadsheetDetails } from '../services/googleWorkspace';
+import { isAuthExpiredError, invalidateStoredToken } from '../services/googleAuth';
 import { ActiveSpreadsheet } from '../types';
 
 interface HistoryModalProps {
@@ -21,6 +22,7 @@ interface HistoryModalProps {
   activeSpreadsheet?: ActiveSpreadsheet | null;
   accessToken?: string | null;
   initialTab?: string;
+  onTokenExpired?: () => void;
 }
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
@@ -30,6 +32,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   activeSpreadsheet,
   accessToken,
   initialTab = 'Rekap Harian',
+  onTokenExpired,
 }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,8 +84,17 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
           .reverse();
         setRows(dataRows.filter((row) => row.length > 0 && row.some((c) => c.trim() !== '')));
       } catch (err: any) {
-        console.error('Fetch Google Sheets API error:', err);
-        setError(err.message || 'Gagal membaca data dari Google Sheets API.');
+        if (isAuthExpiredError(err)) {
+          console.warn('Google Sheets token expired in HistoryModal (401)');
+          invalidateStoredToken();
+          if (onTokenExpired) {
+            onTokenExpired();
+          }
+          setError('Sesi Google Sheets telah kedaluwarsa. Silakan perbarui sesi login Google Anda.');
+        } else {
+          console.error('Fetch Google Sheets API error:', err);
+          setError(err.message || 'Gagal membaca data dari Google Sheets API.');
+        }
       } finally {
         setLoading(false);
       }

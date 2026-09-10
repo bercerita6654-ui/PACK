@@ -1,3 +1,5 @@
+import { isAuthExpiredError } from './googleAuth';
+
 export interface DriveSpreadsheetItem {
   id: string;
   name: string;
@@ -189,15 +191,23 @@ export async function appendDailyRekapRow(
   }
 }
 
+export interface AppendPackingOrdersResult {
+  added: number;
+  skippedDuplicates: number;
+  skippedOrders: string[];
+  targetSheet: string;
+}
+
 /**
  * Append multiple rows of scanned packed orders to Google Sheet (e.g. Packing Reg)
+ * Automatically verifies existing sheet rows to prevent duplicate order numbers / resi.
  */
 export async function appendPackingOrders(
   accessToken: string,
   spreadsheetId: string,
   rows: (string | number)[][],
   sheetTab: string = 'Packing Reg'
-): Promise<void> {
+): Promise<AppendPackingOrdersResult> {
   const details = await getSpreadsheetDetails(accessToken, spreadsheetId);
   let targetSheet = details.sheets.find(
     (s) => s.title.trim().toLowerCase() === sheetTab.trim().toLowerCase()
@@ -229,24 +239,99 @@ export async function appendPackingOrders(
     }
   }
 
-  const range = `${encodeURIComponent(targetSheet)}!A1`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      values: rows,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gagal menyimpan data packing ke Google Sheet (${sheetTab}): ${res.status} - ${err}`);
+  // Read existing rows to check for duplicate order numbers and calculate sequential numbering
+  let existingValues: any[][] = [];
+  try {
+    existingValues = await fetchSheetValues(accessToken, spreadsheetId, `'${targetSheet}'!A1:Z5000`);
+  } catch (e: any) {
+    if (isAuthExpiredError(e)) throw e;
+    console.warn('Could not read existing sheet rows for duplicate check:', e);
   }
+
+  const existingOrderSet = new Set<string>();
+  let existingDataRowsCount = 0;
+
+  if (existingValues && existingValues.length > 0) {
+    let orderColIndex = 1;
+    let hasHeader = false;
+    if (existingValues[0]) {
+      const headerCells = existingValues[0].map((c: any) => String(c || '').toLowerCase());
+      const found = headerCells.findIndex((h: string) =>
+        h.includes('pesanan') || h.includes('resi') || h.includes('order') || h.includes('barcode')
+      );
+      if (found !== -1) {
+        orderColIndex = found;
+        hasHeader = true;
+      } else if (
+        headerCells.some((c: string) => c === 'no' || c === 'platform' || c === 'tanggal' || c === 'status')
+      ) {
+        hasHeader = true;
+      }
+    }
+
+    const startIndex = hasHeader ? 1 : 0;
+    for (let i = startIndex; i < existingValues.length; i++) {
+      const r = existingValues[i];
+      if (!r || r.length === 0 || !r.some((cell: any) => cell && String(cell).trim() !== '')) {
+        continue;
+      }
+      existingDataRowsCount++;
+      const val1 = String(r[orderColIndex] ?? '').trim().toUpperCase();
+      const val2 = String(r[1] ?? '').trim().toUpperCase();
+      if (val1) existingOrderSet.add(val1);
+      if (val2) existingOrderSet.add(val2);
+    }
+  }
+
+  // Filter incoming rows against existing orders in sheet
+  const rowsToAppend: (string | number)[][] = [];
+  const skippedOrders: string[] = [];
+  const batchSeen = new Set<string>();
+
+  for (const row of rows) {
+    // Standard format: [No, orderNumber, platform, date, timestamp, status]
+    const orderNo = String(row[1] || '').trim().toUpperCase();
+    if (!orderNo) continue;
+
+    if (existingOrderSet.has(orderNo) || batchSeen.has(orderNo)) {
+      skippedOrders.push(orderNo);
+    } else {
+      batchSeen.add(orderNo);
+      const rowData = [...row];
+      // Sequential numbering continuing from existing rows
+      rowData[0] = existingDataRowsCount + rowsToAppend.length + 1;
+      rowsToAppend.push(rowData);
+    }
+  }
+
+  // Only append if there are new non-duplicate rows
+  if (rowsToAppend.length > 0) {
+    const range = `${encodeURIComponent(targetSheet)}!A1`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        values: rowsToAppend,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Gagal menyimpan data packing ke Google Sheet (${sheetTab}): ${res.status} - ${err}`);
+    }
+  }
+
+  return {
+    added: rowsToAppend.length,
+    skippedDuplicates: skippedOrders.length,
+    skippedOrders,
+    targetSheet,
+  };
 }
 
 /**
@@ -342,7 +427,10 @@ export async function fetchPackingRegHistory(
       const rows = values.slice(1).map((r: any[]) => r.map((c) => String(c ?? '')));
       return { tabName: targetTabName, headers, rows };
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (isAuthExpiredError(err)) {
+      throw err;
+    }
     // If direct fetch fails, lookup the sheet list to find a matching tab
     console.warn(`Direct fetch of ${targetTabName} failed, attempting tab resolution:`, err);
   }

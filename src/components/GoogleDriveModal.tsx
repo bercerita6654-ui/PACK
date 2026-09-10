@@ -20,6 +20,7 @@ import {
   createRekapSpreadsheet,
   DriveSpreadsheetItem,
 } from '../services/googleWorkspace';
+import { isAuthExpiredError, invalidateStoredToken } from '../services/googleAuth';
 import { ActiveSpreadsheet } from '../types';
 
 interface GoogleDriveModalProps {
@@ -29,6 +30,7 @@ interface GoogleDriveModalProps {
   accessToken: string | null;
   onSignIn: () => void;
   onSignOut: () => void;
+  onTokenExpired?: () => void;
   activeSpreadsheet: ActiveSpreadsheet | null;
   onSelectSpreadsheet: (sheet: ActiveSpreadsheet) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
@@ -41,6 +43,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   accessToken,
   onSignIn,
   onSignOut,
+  onTokenExpired,
   activeSpreadsheet,
   onSelectSpreadsheet,
   showToast,
@@ -65,8 +68,17 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       const files = await listSpreadsheets(accessToken);
       setSpreadsheets(files);
     } catch (err: any) {
-      console.error('Error fetching drive spreadsheets:', err);
-      showToast(err.message || 'Gagal mengambil daftar spreadsheet dari Google Drive', 'error');
+      if (isAuthExpiredError(err)) {
+        console.warn('Google Drive token expired (401)');
+        invalidateStoredToken();
+        if (onTokenExpired) {
+          onTokenExpired();
+        }
+        showToast('Sesi Google Drive telah kedaluwarsa. Silakan masuk kembali.', 'warning');
+      } else {
+        console.error('Error fetching drive spreadsheets:', err);
+        showToast(err.message || 'Gagal mengambil daftar spreadsheet dari Google Drive', 'error');
+      }
     } finally {
       setIsLoadingList(false);
     }
@@ -95,8 +107,17 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
       showToast('Spreadsheet baru berhasil dibuat di Google Drive Anda!', 'success');
       handleLoadDriveFiles();
     } catch (err: any) {
-      console.error('Error creating spreadsheet:', err);
-      showToast(err.message || 'Gagal membuat spreadsheet baru di Google Drive', 'error');
+      if (isAuthExpiredError(err)) {
+        console.warn('Google Drive token expired (401) on create');
+        invalidateStoredToken();
+        if (onTokenExpired) {
+          onTokenExpired();
+        }
+        showToast('Sesi Google Drive telah kedaluwarsa. Silakan masuk kembali.', 'warning');
+      } else {
+        console.error('Error creating spreadsheet:', err);
+        showToast(err.message || 'Gagal membuat spreadsheet baru di Google Drive', 'error');
+      }
     } finally {
       setIsCreatingNew(false);
     }

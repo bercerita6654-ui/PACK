@@ -15,11 +15,13 @@ import {
 } from 'lucide-react';
 import { PlatformType } from '../types';
 import { fetchPackingRegHistory } from '../services/googleWorkspace';
+import { isAuthExpiredError, invalidateStoredToken } from '../services/googleAuth';
 
 interface PackingSheetHistoryProps {
   accessToken: string | null;
   userEmail?: string;
   onLoginGoogle?: () => void;
+  onTokenExpired?: () => void;
   targetSpreadsheetId: string;
   targetSheetTab: string;
   lastSyncTimestamp?: number;
@@ -40,6 +42,7 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
   accessToken,
   userEmail,
   onLoginGoogle,
+  onTokenExpired,
   targetSpreadsheetId,
   targetSheetTab,
   lastSyncTimestamp,
@@ -60,7 +63,7 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
   const loadSheetHistory = useCallback(async () => {
     if (!accessToken) {
       setSheetRows([]);
-      setError('Belum terhubung dengan akun Google. Silakan login untuk membaca data sheet.');
+      setError(null);
       return;
     }
 
@@ -113,12 +116,21 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
       setSheetRows(parsed);
       setLastFetchedAt(new Date());
     } catch (err: any) {
-      console.error('Error fetching sheet packing history:', err);
-      setError(err.message || 'Gagal membaca riwayat dari Google Sheet.');
+      if (isAuthExpiredError(err)) {
+        console.warn('Google Sheet access token expired or invalid (401). Invalidating stored token.');
+        invalidateStoredToken();
+        if (onTokenExpired) {
+          onTokenExpired();
+        }
+        setError('Sesi Google Sheets telah kedaluwarsa. Silakan perbarui sesi login Google Anda.');
+      } else {
+        console.error('Error fetching sheet packing history:', err);
+        setError(err.message || 'Gagal membaca riwayat dari Google Sheet.');
+      }
     } finally {
       setLoading(false);
     }
-  }, [accessToken, targetSpreadsheetId, targetSheetTab]);
+  }, [accessToken, targetSpreadsheetId, targetSheetTab, onTokenExpired]);
 
   // Initial load or when accessToken / lastSyncTimestamp changes
   useEffect(() => {
@@ -245,11 +257,12 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
             onLoginGoogle && (
               <button
                 type="button"
+                id="btn-login-google-drive"
                 onClick={onLoginGoogle}
                 className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Hubungkan Google Drive</span>
+                <span>{userEmail ? 'Perbarui Sesi Google' : 'Hubungkan Akun Google'}</span>
               </button>
             )
           )}
@@ -390,19 +403,22 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
           <div className="p-8 text-center text-slate-500">
             <AlertCircle className="w-8 h-8 mx-auto text-amber-500 mb-2 opacity-80" />
             <h4 className="text-sm font-bold text-slate-800">
-              Koneksikan Akun Google untuk Membaca Riwayat Sheet
+              {userEmail ? 'Sesi Google Sheets Perlu Diperbarui' : 'Koneksikan Akun Google untuk Membaca Riwayat Sheet'}
             </h4>
             <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
-              Aplikasi memerlukan izin baca Google Spreadsheet untuk menampilkan daftar paket yang sudah tersimpan di sheet <code>{resolvedTabName}</code> secara real-time.
+              {userEmail
+                ? `Akun Anda (${userEmail}) terhubung, namun izin sesi Google Sheet perlu diperbarui kembali agar data riwayat dapat dimuat secara real-time.`
+                : `Aplikasi memerlukan izin baca Google Spreadsheet untuk menampilkan daftar paket yang sudah tersimpan di sheet "${resolvedTabName}" secara real-time.`}
             </p>
             {onLoginGoogle && (
               <button
                 type="button"
+                id="btn-login-empty-history"
                 onClick={onLoginGoogle}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-xs transition-colors"
               >
                 <LogIn className="w-4 h-4" />
-                <span>Masuk dengan Google</span>
+                <span>{userEmail ? 'Perbarui Sesi Google' : 'Masuk dengan Google'}</span>
               </button>
             )}
           </div>
@@ -417,16 +433,28 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
             </span>
           </div>
         ) : error ? (
-          <div className="p-6 text-center text-rose-600 bg-rose-50/50">
-            <AlertCircle className="w-6 h-6 mx-auto mb-2 text-rose-500" />
-            <p className="text-xs font-bold">{error}</p>
-            <button
-              type="button"
-              onClick={loadSheetHistory}
-              className="mt-3 px-3 py-1.5 bg-white border border-rose-200 hover:bg-rose-100 rounded-lg text-xs font-bold text-rose-700 transition-colors"
-            >
-              Coba Lagi
-            </button>
+          <div className="p-6 text-center bg-amber-50/70 border border-amber-200/60 rounded-xl m-4">
+            <AlertCircle className="w-6 h-6 mx-auto mb-2 text-amber-600" />
+            <p className="text-xs font-bold text-slate-800">{error}</p>
+            <div className="mt-3 flex items-center justify-center gap-2">
+              {onLoginGoogle && (
+                <button
+                  type="button"
+                  onClick={onLoginGoogle}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Perbarui Sesi Google</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={loadSheetHistory}
+                className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-bold text-slate-700 transition-colors shadow-2xs"
+              >
+                Coba Lagi
+              </button>
+            </div>
           </div>
         ) : filteredAndSortedRows.length === 0 ? (
           <div className="p-8 text-center text-slate-400">

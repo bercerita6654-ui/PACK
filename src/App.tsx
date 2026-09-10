@@ -326,6 +326,10 @@ export default function App() {
         }
       }
     } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user') {
+        showToast('Login Google dibatalkan.', 'info');
+        return;
+      }
       console.error('Google sign in error:', err);
       showToast(err.message || 'Gagal login dengan akun Google.', 'error');
     }
@@ -768,16 +772,16 @@ export default function App() {
     setWorkspaceConfirmModal({
       isOpen: true,
       title: `Simpan Hasil Scan Packing ke Sheet "${targetTab}"`,
-      description: `Menambahkan ${packedOrders.length} data nomor resi / pesanan yang telah di-scan ke sheet "${targetTab}" pada spreadsheet 1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI.`,
+      description: `Menyimpan ${packedOrders.length} data nomor resi / pesanan ke sheet "${targetTab}". Sistem otomatis mencegah double-save jika ada nomor pesanan yang sama. Data packing paket di aplikasi akan otomatis direset setelah disimpan.`,
       spreadsheetName: `Sheet: ${targetTab} (${targetSpreadsheetId.substring(0, 8)}...${targetSpreadsheetId.slice(-6)})`,
       spreadsheetUrl: targetSheetUrl,
       details: [
         { label: 'Target Sheet', value: targetTab },
-        { label: 'Spreadsheet ID', value: targetSpreadsheetId },
-        { label: 'Total Pesanan', value: `${packedOrders.length} Paket` },
+        { label: 'Total Pesanan Scan', value: `${packedOrders.length} Paket` },
         { label: 'Pesanan Shopee', value: `${shopeeCount} Paket` },
         { label: 'Tokopedia / TikTok', value: `${tokpedCount} Paket` },
-        { label: 'Tanggal Scan', value: appData.date },
+        { label: 'Anti Duplikat', value: 'Cek otomatis resi sama' },
+        { label: 'Setelah Simpan', value: 'Otomatis reset data paket' },
       ],
       action: async () => {
         setIsWorkspaceSubmitting(true);
@@ -797,20 +801,32 @@ export default function App() {
             'Selesai Packing',
           ]);
 
+          let saveResult;
           try {
-            await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab);
+            saveResult = await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab);
           } catch (initialErr: any) {
             if (isAuthExpiredError(initialErr)) {
               showToast('Memperbarui token akses Google...', 'info');
               activeToken = await refreshGoogleToken();
               setAccessToken(activeToken);
-              await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab);
+              saveResult = await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab);
             } else {
               throw initialErr;
             }
           }
 
-          showToast(`${packedOrders.length} paket packing berhasil disimpan ke sheet "${targetTab}"!`, 'success');
+          // Otomatis reset data packing paket setelah klik simpan ke Google Sheet
+          handleClearPackedOrders();
+
+          // Berikan notifikasi akurat mengenai hasil simpan & duplikasi
+          if (saveResult.added > 0 && saveResult.skippedDuplicates === 0) {
+            showToast(`${saveResult.added} paket packing berhasil disimpan ke sheet "${saveResult.targetSheet}"! Data packing paket telah otomatis direset.`, 'success');
+          } else if (saveResult.added > 0 && saveResult.skippedDuplicates > 0) {
+            showToast(`${saveResult.added} paket baru berhasil disimpan. ${saveResult.skippedDuplicates} paket dilewati karena nomor pesanan sudah ada di sheet "${saveResult.targetSheet}" (mencegah duplikat). Data packing telah direset.`, 'success');
+          } else {
+            showToast(`Semua ${saveResult.skippedDuplicates} nomor pesanan sudah pernah tersimpan sebelumnya di sheet "${saveResult.targetSheet}". Tidak ada data duplikat yang disimpan. Data packing telah direset.`, 'info');
+          }
+
           setLastPackingSyncTime(Date.now());
           setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
         } catch (err: any) {
@@ -917,6 +933,7 @@ export default function App() {
             accessToken={accessToken}
             userEmail={user?.email}
             onLoginGoogle={handleGoogleSignIn}
+            onTokenExpired={() => setAccessToken(null)}
             targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
             targetSheetTab={TARGET_PACKING_SHEET_TAB}
             lastSyncTimestamp={lastPackingSyncTime}
@@ -945,6 +962,7 @@ export default function App() {
         accessToken={accessToken}
         onSignIn={handleGoogleSignIn}
         onSignOut={handleGoogleSignOut}
+        onTokenExpired={() => setAccessToken(null)}
         activeSpreadsheet={activeSpreadsheet}
         onSelectSpreadsheet={(sheet) => setActiveSpreadsheet(sheet)}
         showToast={showToast}
@@ -964,6 +982,7 @@ export default function App() {
         csvUrl={csvUrl}
         activeSpreadsheet={activeSpreadsheet}
         accessToken={accessToken}
+        onTokenExpired={() => setAccessToken(null)}
         initialTab={activeTab === 'packing' ? 'Packing Reg' : 'Rekap Harian'}
       />
 

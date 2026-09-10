@@ -46,6 +46,7 @@ interface PackingSectionProps {
   accessToken?: string | null;
   userEmail?: string;
   onLoginGoogle?: () => void;
+  onTokenExpired?: () => void;
   targetSpreadsheetId?: string;
   targetSheetTab?: string;
   lastSyncTimestamp?: number;
@@ -72,6 +73,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
   accessToken,
   userEmail,
   onLoginGoogle,
+  onTokenExpired,
   targetSpreadsheetId = '1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI',
   targetSheetTab = 'Packing Reg',
   lastSyncTimestamp,
@@ -1103,6 +1105,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
         accessToken={accessToken || null}
         userEmail={userEmail}
         onLoginGoogle={onLoginGoogle}
+        onTokenExpired={onTokenExpired}
         targetSpreadsheetId={targetSpreadsheetId}
         targetSheetTab={targetSheetTab}
         lastSyncTimestamp={lastSyncTimestamp}
