@@ -26,7 +26,7 @@ import {
   Barcode,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { PackedOrder, PlatformType } from '../types';
+import { PackedOrder, PlatformType, ProcessedNota } from '../types';
 import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
 import { PackingSheetHistory } from './PackingSheetHistory';
@@ -50,6 +50,8 @@ interface PackingSectionProps {
   targetSpreadsheetId?: string;
   targetSheetTab?: string;
   lastSyncTimestamp?: number;
+  processedNotas?: ProcessedNota[];
+  onNavigateToNotas?: () => void;
 }
 
 type ScanMode = 'single' | 'batch_paste';
@@ -77,6 +79,8 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
   targetSpreadsheetId = '1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI',
   targetSheetTab = 'Packing Reg',
   lastSyncTimestamp,
+  processedNotas = [],
+  onNavigateToNotas,
 }) => {
   // Navigation between Single Rapid Scan and Batch Paste
   const [scanMode, setScanMode] = useState<ScanMode>('single');
@@ -169,7 +173,16 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     if (success) {
       soundFX.playSuccess();
       const platformName = platform === 'Tokopedia/TikTok' ? 'Tokopedia / TikTok' : platform;
-      showToast(`No. Pesanan ${code} (${platformName}) berhasil di-scan!`, 'success');
+      const matchingNota = processedNotas?.find((n) => n.orderNumber.toUpperCase() === code);
+
+      if (matchingNota) {
+        showToast(`No. Pesanan ${code} (${platformName}) di-scan! ✓ Cocok dengan Nota Admin`, 'success');
+      } else if (processedNotas && processedNotas.length > 0) {
+        showToast(`No. Pesanan ${code} (${platformName}) di-scan (Belum ada di daftar Nota Admin)`, 'info');
+      } else {
+        showToast(`No. Pesanan ${code} (${platformName}) berhasil di-scan!`, 'success');
+      }
+
       setSessionBatchCount((prev) => prev + 1);
 
       // Add to live recent scans ticker
@@ -440,6 +453,54 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Admin Nota Status Banner */}
+      {processedNotas && processedNotas.length > 0 && (
+        <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2.5 bg-amber-100 text-amber-800 rounded-xl shrink-0">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-amber-900">
+                  Verifikasi Nota Admin
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-200/80 text-amber-900">
+                  {processedNotas.filter((n) => n.isPacked).length} / {processedNotas.length} Selesai Dipacking
+                </span>
+              </div>
+              <p className="text-xs text-amber-800/90 mt-0.5">
+                {processedNotas.filter((n) => !n.isPacked).length > 0 ? (
+                  <span>
+                    Masih ada{' '}
+                    <strong className="font-bold underline text-amber-950">
+                      {processedNotas.filter((n) => !n.isPacked).length} nota diproses
+                    </strong>{' '}
+                    yang belum di-scan packing.
+                  </span>
+                ) : (
+                  <span className="text-emerald-800 font-bold">
+                    ✓ Semua nota yang diproses admin telah selesai dipacking!
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {onNavigateToNotas && (
+            <button
+              type="button"
+              id="btn-goto-nota-from-packing"
+              onClick={onNavigateToNotas}
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-2xs"
+            >
+              <span>Lihat Antrean Nota</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Scanner Deck (Simplified & Clean) */}
       <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 space-y-4">
         {/* Header & Mode Tabs */}
@@ -1073,10 +1134,32 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                         {order.timestamp}
                       </td>
                       <td className="p-3">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          Packed
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            Packed
+                          </span>
+                          {processedNotas && processedNotas.length > 0 && (
+                            (() => {
+                              const match = processedNotas.find(
+                                (n) => n.orderNumber.toUpperCase() === order.orderNumber.toUpperCase()
+                              );
+                              if (match) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                    <FileText className="w-2.5 h-2.5 text-amber-600" />
+                                    Nota Admin ✓
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
+                                  Belum di Nota
+                                </span>
+                              );
+                            })()
+                          )}
+                        </div>
                       </td>
                       <td className="p-3 text-center">
                         <button

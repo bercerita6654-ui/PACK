@@ -3,7 +3,7 @@ export type DeliveryMethod = 'pickup' | 'drop off';
 
 export type PlatformType = 'Shopee' | 'Tokopedia/TikTok' | 'Lainnya';
 
-export type ActiveTab = 'rekap' | 'packing';
+export type ActiveTab = 'rekap' | 'packing' | 'nota';
 
 export interface PackedOrder {
   id: string;
@@ -11,6 +11,17 @@ export interface PackedOrder {
   platform: PlatformType;
   timestamp: string; // e.g. "14:25:30"
   date: string;
+  notes?: string;
+}
+
+export interface ProcessedNota {
+  id: string;
+  orderNumber: string;
+  platform: PlatformType;
+  timestamp: string; // e.g. "10:15:30"
+  date: string;      // e.g. "Kamis, 10 September 2026"
+  isPacked?: boolean;
+  packedAt?: string;
   notes?: string;
 }
 

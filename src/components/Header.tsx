@@ -10,6 +10,7 @@ import {
   HardDrive,
   FileSpreadsheet,
   Check,
+  FileText,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { AppState, ActiveTab, ActiveSpreadsheet } from '../types';
@@ -19,6 +20,8 @@ interface HeaderProps {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   packingCount: number;
+  notaCount?: number;
+  pendingNotaCount?: number;
   user: User | null;
   activeSpreadsheet: ActiveSpreadsheet | null;
   onOpenGoogleDriveModal: () => void;
@@ -33,6 +36,8 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onTabChange,
   packingCount,
+  notaCount = 0,
+  pendingNotaCount = 0,
   user,
   activeSpreadsheet,
   onOpenGoogleDriveModal,
@@ -166,36 +171,13 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Menu Navigation Tabs */}
-      <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+      <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 overflow-x-auto">
         <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-          <button
-            type="button"
-            id="nav-tab-rekap"
-            onClick={() => onTabChange('rekap')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all ${
-              activeTab === 'rekap'
-                ? 'bg-white text-indigo-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Truck className="w-4 h-4" />
-            <span>Rekap Kiriman</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
-                activeTab === 'rekap'
-                  ? 'bg-indigo-100 text-indigo-800'
-                  : 'bg-slate-200/70 text-slate-600'
-              }`}
-            >
-              {total}
-            </span>
-          </button>
-
           <button
             type="button"
             id="nav-tab-packing"
             onClick={() => onTabChange('packing')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all ${
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
               activeTab === 'packing'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -211,6 +193,59 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               {packingCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            id="nav-tab-nota"
+            onClick={() => onTabChange('nota')}
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+              activeTab === 'nota'
+                ? 'bg-white text-amber-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="w-4 h-4 text-amber-600" />
+            <span>Nota Diproses</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
+                activeTab === 'nota'
+                  ? 'bg-amber-100 text-amber-900'
+                  : 'bg-slate-200/70 text-slate-600'
+              }`}
+            >
+              {pendingNotaCount > 0 ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block" />
+                  <span>{pendingNotaCount} Pending</span>
+                </>
+              ) : (
+                <span>{notaCount}</span>
+              )}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            id="nav-tab-rekap"
+            onClick={() => onTabChange('rekap')}
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+              activeTab === 'rekap'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Truck className="w-4 h-4" />
+            <span>Rekap Kiriman</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                activeTab === 'rekap'
+                  ? 'bg-indigo-100 text-indigo-800'
+                  : 'bg-slate-200/70 text-slate-600'
+              }`}
+            >
+              {total}
             </span>
           </button>
         </div>

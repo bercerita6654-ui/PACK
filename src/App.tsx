@@ -5,6 +5,7 @@ import { QuickAddSection } from './components/QuickAddSection';
 import { LogTable } from './components/LogTable';
 import { ExpeditionChart } from './components/ExpeditionChart';
 import { PackingSection } from './components/PackingSection';
+import { ProcessedNotaSection } from './components/ProcessedNotaSection';
 import { ConfirmResetModal } from './components/ConfirmResetModal';
 import { HistoryModal } from './components/HistoryModal';
 import { SettingsModal } from './components/SettingsModal';
@@ -21,7 +22,11 @@ import {
   getCachedUserProfile,
   getStoredAccessToken,
 } from './services/googleAuth';
-import { appendDailyRekapRow, appendPackingOrders } from './services/googleWorkspace';
+import {
+  appendDailyRekapRow,
+  appendPackingOrders,
+  appendProcessedNotas,
+} from './services/googleWorkspace';
 import {
   DEFAULT_GOOGLE_SHEET_WEB_APP_URL,
   DEFAULT_GOOGLE_SHEET_CSV_URL,
@@ -37,6 +42,7 @@ import {
   PackedOrder,
   PlatformType,
   ActiveSpreadsheet,
+  ProcessedNota,
 } from './types';
 import {
   formatIndonesianDate,
@@ -46,6 +52,7 @@ import {
 
 export const TARGET_PACKING_SPREADSHEET_ID = '1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI';
 export const TARGET_PACKING_SHEET_TAB = 'Packing Reg';
+export const TARGET_NOTA_SHEET_TAB = 'Nota Diproses';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('packing');
@@ -247,6 +254,25 @@ export default function App() {
     return [];
   });
 
+  // State for Processed Notas (Admin Note Scanning & Packing Verification)
+  const [processedNotas, setProcessedNotas] = useState<ProcessedNota[]>(() => {
+    try {
+      const saved = localStorage.getItem('packTrack_processedNotas');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item: ProcessedNota) => ({
+            ...item,
+            orderNumber: (item.orderNumber || '').trim().toUpperCase(),
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Error loading processed notas:', e);
+    }
+    return [];
+  });
+
   const [webAppUrl, setWebAppUrl] = useState<string>(() => {
     return (
       localStorage.getItem('packTrack_webAppUrl') ||
@@ -361,6 +387,15 @@ export default function App() {
     }
   }, [packedOrders]);
 
+  // Sync processedNotas to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('packTrack_processedNotas', JSON.stringify(processedNotas));
+    } catch (e) {
+      console.error('Error saving processed notas:', e);
+    }
+  }, [processedNotas]);
+
   // Sync allLogs to localStorage
   useEffect(() => {
     try {
@@ -388,6 +423,16 @@ export default function App() {
     };
 
     setPackedOrders((prev) => [newOrder, ...prev]);
+
+    // Automatically mark matching processed nota as packed
+    setProcessedNotas((prev) =>
+      prev.map((nota) =>
+        nota.orderNumber.toUpperCase() === orderNumber.trim().toUpperCase()
+          ? { ...nota, isPacked: true, packedAt: timeStr }
+          : nota
+      )
+    );
+
     return true;
   };
 
@@ -440,6 +485,16 @@ export default function App() {
 
     if (toAdd.length > 0) {
       setPackedOrders((prev) => [...toAdd, ...prev]);
+
+      // Automatically mark matching processed notas as packed
+      const addedUpperSet = new Set(toAdd.map((o) => o.orderNumber.toUpperCase()));
+      setProcessedNotas((prev) =>
+        prev.map((nota) =>
+          addedUpperSet.has(nota.orderNumber.toUpperCase())
+            ? { ...nota, isPacked: true, packedAt: timeStr }
+            : nota
+        )
+      );
     }
 
     return { added: toAdd.length, duplicates };
@@ -453,6 +508,140 @@ export default function App() {
   // Clear all packed orders
   const handleClearPackedOrders = () => {
     setPackedOrders([]);
+  };
+
+  // Processed Nota Handlers (Admin)
+  const handleAddProcessedNota = (
+    orderNumber: string,
+    platform: PlatformType,
+    notes?: string
+  ): { success: boolean; isDuplicate: boolean } => {
+    const upper = orderNumber.trim().toUpperCase();
+    if (!upper) return { success: false, isDuplicate: false };
+
+    const isExisting = processedNotas.some((n) => n.orderNumber.toUpperCase() === upper);
+    if (isExisting) {
+      return { success: false, isDuplicate: true };
+    }
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    const matchingPacked = packedOrders.find((p) => p.orderNumber.toUpperCase() === upper);
+
+    const newNota: ProcessedNota = {
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      orderNumber: upper,
+      platform,
+      timestamp: timeStr,
+      date: appData.date,
+      isPacked: Boolean(matchingPacked),
+      packedAt: matchingPacked ? matchingPacked.timestamp : undefined,
+      notes,
+    };
+
+    setProcessedNotas((prev) => [newNota, ...prev]);
+    return { success: true, isDuplicate: false };
+  };
+
+  const handleAddProcessedNotasBatch = (
+    items: { orderNumber: string; platform: PlatformType; notes?: string }[],
+    skipDuplicates: boolean = true
+  ): { added: number; duplicates: number } => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    const existingUpper = new Set<string>(processedNotas.map((n) => n.orderNumber.toUpperCase()));
+    const packedUpperMap = new Map<string, PackedOrder>(
+      packedOrders.map((p) => [p.orderNumber.toUpperCase(), p])
+    );
+    const batchSeen = new Set<string>();
+    const toAdd: ProcessedNota[] = [];
+    let duplicates = 0;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const upper = item.orderNumber.trim().toUpperCase();
+      if (!upper) continue;
+
+      const isDup = existingUpper.has(upper) || batchSeen.has(upper);
+      if (isDup) {
+        duplicates++;
+        if (!skipDuplicates) {
+          const match = packedUpperMap.get(upper);
+          toAdd.push({
+            id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+            orderNumber: upper,
+            platform: item.platform,
+            timestamp: timeStr,
+            date: appData.date,
+            isPacked: Boolean(match),
+            packedAt: match ? match.timestamp : undefined,
+            notes: item.notes,
+          });
+        }
+      } else {
+        existingUpper.add(upper);
+        batchSeen.add(upper);
+        const match = packedUpperMap.get(upper);
+        toAdd.push({
+          id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+          orderNumber: upper,
+          platform: item.platform,
+          timestamp: timeStr,
+          date: appData.date,
+          isPacked: Boolean(match),
+          packedAt: match ? match.timestamp : undefined,
+          notes: item.notes,
+        });
+      }
+    }
+
+    if (toAdd.length > 0) {
+      setProcessedNotas((prev) => [...toAdd, ...prev]);
+    }
+
+    return { added: toAdd.length, duplicates };
+  };
+
+  const handleRemoveProcessedNota = (id: string) => {
+    setProcessedNotas((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  const handleClearProcessedNotas = () => {
+    setProcessedNotas([]);
+    showToast('Daftar nota berhasil direset.', 'info');
+  };
+
+  const handleToggleNotaPackedStatus = (id: string) => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    setProcessedNotas((prev) =>
+      prev.map((nota) => {
+        if (nota.id === id) {
+          const nextState = !nota.isPacked;
+          return {
+            ...nota,
+            isPacked: nextState,
+            packedAt: nextState ? timeStr : undefined,
+          };
+        }
+        return nota;
+      })
+    );
   };
 
   // Check date on interval/focus to ensure day rollover is handled
@@ -839,6 +1028,101 @@ export default function App() {
     });
   };
 
+  // Sync Processed Notas to Google Sheet (Tab: "Nota Diproses", Spreadsheet: 1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI)
+  const handleSyncNotasToGoogleSheet = async () => {
+    if (processedNotas.length === 0) {
+      showToast('Belum ada nota diproses untuk disimpan.', 'warning');
+      return;
+    }
+
+    if (!user) {
+      showToast('Silakan hubungkan akun Google Anda untuk menyimpan ke Google Sheet.', 'info');
+      setIsGoogleDriveModalOpen(true);
+      return;
+    }
+
+    const targetSpreadsheetId = TARGET_PACKING_SPREADSHEET_ID;
+    const targetTab = TARGET_NOTA_SHEET_TAB; // "Nota Diproses"
+    const targetSheetUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit`;
+
+    const packedCount = processedNotas.filter((n) => n.isPacked).length;
+    const pendingCount = processedNotas.length - packedCount;
+
+    setWorkspaceConfirmModal({
+      isOpen: true,
+      title: 'Simpan Data Nota Diproses ke Google Sheet',
+      description: `Menyimpan ${processedNotas.length} data nota admin ke tab "${targetTab}". Sistem otomatis mencegah duplikasi jika nomor nota sudah ada di sheet.`,
+      spreadsheetName: `Google Spreadsheet (${targetTab})`,
+      spreadsheetUrl: targetSheetUrl,
+      details: [
+        { label: 'Tab Tujuan', value: targetTab },
+        { label: 'Total Nota', value: `${processedNotas.length} nota` },
+        { label: 'Sudah Packing', value: `${packedCount} nota` },
+        { label: 'Belum Packing', value: `${pendingCount} nota` },
+        { label: 'Pencegahan Duplikat', value: 'Aktif (Nota ganda akan otomatis dilewati)' },
+      ],
+      action: async () => {
+        setIsWorkspaceSubmitting(true);
+        try {
+          let activeToken = accessToken;
+          if (!activeToken) {
+            activeToken = await refreshGoogleToken();
+            setAccessToken(activeToken);
+          }
+
+          const rows = processedNotas.map((nota, idx) => [
+            idx + 1,
+            nota.orderNumber,
+            nota.platform,
+            nota.date,
+            nota.timestamp,
+            nota.isPacked ? 'Selesai Packing' : 'Belum Packing',
+            nota.packedAt || '-',
+            nota.notes || '',
+          ]);
+
+          let saveResult;
+          try {
+            saveResult = await appendProcessedNotas(activeToken, targetSpreadsheetId, rows, targetTab);
+          } catch (initialErr: any) {
+            if (isAuthExpiredError(initialErr)) {
+              showToast('Memperbarui token akses Google...', 'info');
+              activeToken = await refreshGoogleToken();
+              setAccessToken(activeToken);
+              saveResult = await appendProcessedNotas(activeToken, targetSpreadsheetId, rows, targetTab);
+            } else {
+              throw initialErr;
+            }
+          }
+
+          if (saveResult.added > 0 && saveResult.skippedDuplicates === 0) {
+            showToast(
+              `${saveResult.added} nota berhasil disimpan ke tab "${saveResult.targetSheet}" Google Sheet!`,
+              'success'
+            );
+          } else if (saveResult.added > 0 && saveResult.skippedDuplicates > 0) {
+            showToast(
+              `${saveResult.added} nota baru disimpan. ${saveResult.skippedDuplicates} nota dilewati karena sudah ada di sheet "${saveResult.targetSheet}".`,
+              'success'
+            );
+          } else {
+            showToast(
+              `Semua ${saveResult.skippedDuplicates} nota sudah ada sebelumnya di sheet "${saveResult.targetSheet}". Tidak ada data ganda yang disimpan.`,
+              'info'
+            );
+          }
+
+          setWorkspaceConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        } catch (err: any) {
+          console.error('Error saving processed notas:', err);
+          showToast(err.message || 'Gagal menyimpan data nota ke Google Sheet.', 'error');
+        } finally {
+          setIsWorkspaceSubmitting(false);
+        }
+      },
+    });
+  };
+
   // Share formatted WhatsApp summary
   const handleShareWhatsApp = async () => {
     const text = generateWhatsAppSummary(appData);
@@ -878,6 +1162,8 @@ export default function App() {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           packingCount={packedOrders.length}
+          notaCount={processedNotas.length}
+          pendingNotaCount={processedNotas.filter((n) => !n.isPacked).length}
           user={user}
           activeSpreadsheet={activeSpreadsheet}
           onOpenGoogleDriveModal={() => setIsGoogleDriveModalOpen(true)}
@@ -887,7 +1173,7 @@ export default function App() {
           onExportCSV={handleExportCSV}
         />
 
-        {activeTab === 'rekap' ? (
+        {activeTab === 'rekap' && (
           <>
             {/* 4 Expedition Summary Cards */}
             <ExpeditionCards counts={appData.counts} />
@@ -919,7 +1205,9 @@ export default function App() {
               </div>
             </div>
           </>
-        ) : (
+        )}
+
+        {activeTab === 'packing' && (
           /* Paket Packing Scanner Section */
           <PackingSection
             orders={packedOrders}
@@ -937,6 +1225,29 @@ export default function App() {
             targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
             targetSheetTab={TARGET_PACKING_SHEET_TAB}
             lastSyncTimestamp={lastPackingSyncTime}
+            processedNotas={processedNotas}
+            onNavigateToNotas={() => setActiveTab('nota')}
+          />
+        )}
+
+        {activeTab === 'nota' && (
+          /* Scan Nota Diproses Admin Section */
+          <ProcessedNotaSection
+            notas={processedNotas}
+            onAddNota={handleAddProcessedNota}
+            onAddNotasBatch={handleAddProcessedNotasBatch}
+            onRemoveNota={handleRemoveProcessedNota}
+            onClearNotas={handleClearProcessedNotas}
+            onTogglePackedStatus={handleToggleNotaPackedStatus}
+            onSyncGoogleSheet={handleSyncNotasToGoogleSheet}
+            isSyncing={isWorkspaceSubmitting}
+            showToast={showToast}
+            accessToken={accessToken}
+            userEmail={user?.email}
+            onLoginGoogle={handleGoogleSignIn}
+            targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
+            targetSheetTab={TARGET_NOTA_SHEET_TAB}
+            onNavigateToPacking={() => setActiveTab('packing')}
           />
         )}
       </div>

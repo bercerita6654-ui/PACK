@@ -458,3 +458,135 @@ export async function fetchPackingRegHistory(
   return { tabName: matchedTab, headers, rows };
 }
 
+export interface AppendProcessedNotasResult {
+  added: number;
+  skippedDuplicates: number;
+  skippedOrders: string[];
+  targetSheet: string;
+}
+
+/**
+ * Append multiple rows of processed notes to Google Sheet (tab "Nota Diproses")
+ * Automatically prevents duplicate notes from being added twice.
+ */
+export async function appendProcessedNotas(
+  accessToken: string,
+  spreadsheetId: string,
+  rows: (string | number)[][],
+  sheetTab: string = 'Nota Diproses'
+): Promise<AppendProcessedNotasResult> {
+  const details = await getSpreadsheetDetails(accessToken, spreadsheetId);
+  let targetSheet = details.sheets.find(
+    (s) => s.title.trim().toLowerCase() === sheetTab.trim().toLowerCase()
+  )?.title;
+
+  if (!targetSheet) {
+    try {
+      await addSheetTab(accessToken, spreadsheetId, sheetTab, [
+        'No',
+        'No Nota / Pesanan',
+        'Platform',
+        'Tanggal Admin',
+        'Waktu Admin',
+        'Status Packing',
+        'Waktu Packing',
+        'Catatan',
+      ]);
+      targetSheet = sheetTab;
+    } catch {
+      targetSheet = details.sheets[0]?.title || sheetTab;
+    }
+  }
+
+  // Read existing rows to check for duplicate order numbers and calculate sequential numbering
+  let existingValues: any[][] = [];
+  try {
+    existingValues = await fetchSheetValues(accessToken, spreadsheetId, `'${targetSheet}'!A1:Z5000`);
+  } catch (e: any) {
+    if (isAuthExpiredError(e)) throw e;
+    console.warn('Could not read existing sheet rows for duplicate check:', e);
+  }
+
+  const existingOrderSet = new Set<string>();
+  let existingDataRowsCount = 0;
+
+  if (existingValues && existingValues.length > 0) {
+    let orderColIndex = 1;
+    let hasHeader = false;
+    if (existingValues[0]) {
+      const headerCells = existingValues[0].map((c: any) => String(c || '').toLowerCase());
+      const found = headerCells.findIndex((h: string) =>
+        h.includes('nota') || h.includes('pesanan') || h.includes('resi') || h.includes('order')
+      );
+      if (found !== -1) {
+        orderColIndex = found;
+        hasHeader = true;
+      } else if (
+        headerCells.some((c: string) => c === 'no' || c === 'platform' || c === 'tanggal')
+      ) {
+        hasHeader = true;
+      }
+    }
+
+    const startIndex = hasHeader ? 1 : 0;
+    for (let i = startIndex; i < existingValues.length; i++) {
+      const r = existingValues[i];
+      if (!r || r.length === 0 || !r.some((cell: any) => cell && String(cell).trim() !== '')) {
+        continue;
+      }
+      existingDataRowsCount++;
+      const val1 = String(r[orderColIndex] ?? '').trim().toUpperCase();
+      const val2 = String(r[1] ?? '').trim().toUpperCase();
+      if (val1) existingOrderSet.add(val1);
+      if (val2) existingOrderSet.add(val2);
+    }
+  }
+
+  // Filter incoming rows against existing orders in sheet
+  const rowsToAppend: (string | number)[][] = [];
+  const skippedOrders: string[] = [];
+  const batchSeen = new Set<string>();
+
+  for (const row of rows) {
+    const orderNo = String(row[1] || '').trim().toUpperCase();
+    if (!orderNo) continue;
+
+    if (existingOrderSet.has(orderNo) || batchSeen.has(orderNo)) {
+      skippedOrders.push(orderNo);
+    } else {
+      batchSeen.add(orderNo);
+      const rowData = [...row];
+      rowData[0] = existingDataRowsCount + rowsToAppend.length + 1;
+      rowsToAppend.push(rowData);
+    }
+  }
+
+  if (rowsToAppend.length > 0) {
+    const range = `${encodeURIComponent(targetSheet)}!A1`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        values: rowsToAppend,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Gagal menyimpan data nota ke Google Sheet (${sheetTab}): ${res.status} - ${err}`);
+    }
+  }
+
+  return {
+    added: rowsToAppend.length,
+    skippedDuplicates: skippedOrders.length,
+    skippedOrders,
+    targetSheet,
+  };
+}
+
