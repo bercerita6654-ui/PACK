@@ -21,7 +21,7 @@ import {
   DriveSpreadsheetItem,
 } from '../services/googleWorkspace';
 import { isAuthExpiredError, invalidateStoredToken } from '../services/googleAuth';
-import { ActiveSpreadsheet } from '../types';
+import { ActiveSpreadsheet, ToastItem, ToastOptions } from '../types';
 
 interface GoogleDriveModalProps {
   isOpen: boolean;
@@ -33,7 +33,11 @@ interface GoogleDriveModalProps {
   onTokenExpired?: () => void;
   activeSpreadsheet: ActiveSpreadsheet | null;
   onSelectSpreadsheet: (sheet: ActiveSpreadsheet) => void;
-  showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  showToast: (
+    msg: string,
+    type?: ToastItem['type'],
+    options?: ToastOptions
+  ) => void;
 }
 
 export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({

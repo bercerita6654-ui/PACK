@@ -3,7 +3,7 @@ export type DeliveryMethod = 'pickup' | 'drop off';
 
 export type PlatformType = 'Shopee' | 'Tokopedia/TikTok' | 'Lainnya';
 
-export type ActiveTab = 'rekap' | 'packing' | 'nota';
+export type ActiveTab = 'rekap' | 'packing' | 'nota' | 'sheet_history';
 
 export interface PackedOrder {
   id: string;
@@ -63,6 +63,21 @@ export interface ToastItem {
   id: string;
   type: 'success' | 'error' | 'warning' | 'info';
   message: string;
+  title?: string;
+  rowsAdded?: number;
+  rowsSkipped?: number;
+  sheetTab?: string;
+  spreadsheetName?: string;
+  duration?: number;
+}
+
+export interface ToastOptions {
+  title?: string;
+  rowsAdded?: number;
+  rowsSkipped?: number;
+  sheetTab?: string;
+  spreadsheetName?: string;
+  duration?: number;
 }
 
 export interface ActiveSpreadsheet {

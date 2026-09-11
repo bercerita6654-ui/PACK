@@ -12,6 +12,8 @@ interface SettingsModalProps {
   webAppUrl: string;
   csvUrl: string;
   onSaveUrls: (webAppUrl: string, csvUrl: string) => void;
+  showRekapTab: boolean;
+  onToggleShowRekapTab: (show: boolean) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -20,21 +22,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   webAppUrl,
   csvUrl,
   onSaveUrls,
+  showRekapTab,
+  onToggleShowRekapTab,
 }) => {
   const [currentWebAppUrl, setCurrentWebAppUrl] = useState<string>(webAppUrl);
   const [currentCsvUrl, setCurrentCsvUrl] = useState<string>(csvUrl);
+  const [currentShowRekapTab, setCurrentShowRekapTab] = useState<boolean>(showRekapTab);
   const [showScriptHelper, setShowScriptHelper] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
     onSaveUrls(currentWebAppUrl.trim(), currentCsvUrl.trim());
+    onToggleShowRekapTab(currentShowRekapTab);
     onClose();
   };
 
   const handleResetDefaults = () => {
     setCurrentWebAppUrl(DEFAULT_GOOGLE_SHEET_WEB_APP_URL);
     setCurrentCsvUrl(DEFAULT_GOOGLE_SHEET_CSV_URL);
+    setCurrentShowRekapTab(false);
   };
 
   return (
@@ -101,6 +108,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv"
                 className="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
               />
+            </div>
+
+            {/* Visibilitas Tab Menu */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between gap-3">
+              <div>
+                <span className="font-semibold text-slate-800 text-xs sm:text-sm block">
+                  Tampilkan Tab "Rekap Kiriman Reguler"
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Secara default disembunyikan. Aktifkan jika ingin memunculkan menu hitungan ekspedisi reguler (JNE, J&T, SPX, ID Express).
+                </p>
+              </div>
+              <button
+                type="button"
+                id="toggle-show-rekap-tab"
+                role="switch"
+                aria-checked={currentShowRekapTab}
+                onClick={() => setCurrentShowRekapTab(!currentShowRekapTab)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  currentShowRekapTab ? 'bg-indigo-600' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                    currentShowRekapTab ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
             </div>
 
             {/* Helper Accordion */}

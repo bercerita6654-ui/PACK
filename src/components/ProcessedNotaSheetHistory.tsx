@@ -19,7 +19,7 @@ import {
   FileText,
   Layers,
 } from 'lucide-react';
-import { PlatformType, PackedOrder, ProcessedNota } from '../types';
+import { PlatformType, PackedOrder, ProcessedNota, ToastItem, ToastOptions } from '../types';
 import {
   fetchProcessedNotasHistory,
   fetchCrossReferencedNotasAndPacking,
@@ -48,7 +48,11 @@ export interface ProcessedNotaSheetHistoryProps {
   targetSheetTab: string;
   lastSyncTimestamp?: number;
   delayThreshold?: number;
-  showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  showToast: (
+    msg: string,
+    type?: ToastItem['type'],
+    options?: ToastOptions
+  ) => void;
   onImportToActiveSession?: (
     items: { orderNumber: string; platform: PlatformType; notes?: string }[]
   ) => void;

@@ -24,9 +24,10 @@ import {
   Filter,
   LogIn,
   Calendar,
+  CloudUpload,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ProcessedNota, PlatformType, PackedOrder } from '../types';
+import { ProcessedNota, PlatformType, PackedOrder, ToastItem, ToastOptions } from '../types';
 import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
 import {
@@ -72,7 +73,11 @@ interface ProcessedNotaSectionProps {
   onTogglePackedStatus: (id: string) => void;
   onSyncGoogleSheet?: () => void;
   isSyncing?: boolean;
-  showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  showToast: (
+    msg: string,
+    type?: ToastItem['type'],
+    options?: ToastOptions
+  ) => void;
   accessToken?: string | null;
   userEmail?: string;
   onLoginGoogle?: () => void;
@@ -81,6 +86,7 @@ interface ProcessedNotaSectionProps {
   targetSpreadsheetId?: string;
   targetSheetTab?: string;
   onNavigateToPacking?: () => void;
+  onNavigateToSheetHistory?: () => void;
   delayThreshold?: number;
   onDelayThresholdChange?: (threshold: number) => void;
 }
@@ -107,6 +113,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   targetSpreadsheetId = '1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI',
   targetSheetTab = 'Nota Diproses',
   onNavigateToPacking,
+  onNavigateToSheetHistory,
   delayThreshold,
   onDelayThresholdChange,
 }) => {
@@ -2216,77 +2223,54 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
         </div>
 
         {/* Action Buttons Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
-          <div className="flex flex-wrap items-center gap-2">
-            {/* 1-Click WhatsApp Pending Copy */}
-            <button
-              type="button"
-              onClick={handleCopyPendingNotas}
-              disabled={pendingCount === 0}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                pendingCount > 0
-                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 shadow-2xs'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
-              title="Salin daftar nomor nota yang belum dipacking untuk WhatsApp tim packing"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Salin Belum Packing ({pendingCount})</span>
-            </button>
-
-            {/* Quick Copy Delayed Notas specifically */}
-            {delayedCount > 0 && (
-              <button
-                type="button"
-                id="btn-copy-delayed-toolbar"
-                onClick={handleCopyDelayedNotas}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-200 shadow-2xs transition-all"
-                title="Salin daftar khusus nota tertunda untuk dikirim ke tim packing via WhatsApp"
-              >
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                <span>Salin {delayedCount} Nota Tertunda (WA)</span>
-              </button>
-            )}
-
-            {/* Sync to Google Sheet */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-100">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Primary Action Button: Simpan Data (Big & Prominent) */}
             {onSyncGoogleSheet && (
               <button
                 type="button"
                 id="btn-sync-nota-sheet"
                 onClick={onSyncGoogleSheet}
                 disabled={isSyncing || totalNotas === 0}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`group flex items-center justify-center gap-2.5 px-6 sm:px-7 py-3 sm:py-3.5 rounded-2xl text-sm sm:text-base font-black transition-all cursor-pointer ${
                   totalNotas > 0 && !isSyncing
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
-                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-700/25 active:scale-[0.98] ring-4 ring-emerald-500/20 hover:ring-emerald-500/30'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                 }`}
-                title="Simpan daftar nota ke Google Sheet"
+                title="Langkah Berikutnya: Simpan seluruh data nota yang telah discan ke Google Sheet"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>{isSyncing ? 'Menyimpan...' : 'Simpan ke Google Sheet'}</span>
+                <CloudUpload
+                  className={`w-5 h-5 shrink-0 transition-transform group-hover:scale-110 ${
+                    totalNotas > 0 && !isSyncing ? 'animate-bounce text-emerald-100' : 'text-slate-400'
+                  }`}
+                />
+                <span className="tracking-wide">
+                  {isSyncing ? 'Menyimpan Data...' : 'Simpan Data'}
+                </span>
+                {totalNotas > 0 && !isSyncing && (
+                  <span className="bg-emerald-800/90 text-emerald-100 text-xs px-2.5 py-0.5 rounded-full font-bold ml-0.5">
+                    {totalNotas} Nota
+                  </span>
+                )}
+                {totalNotas > 0 && !isSyncing && (
+                  <ArrowRight className="w-4 h-4 shrink-0 text-emerald-200 transition-transform group-hover:translate-x-1" />
+                )}
               </button>
             )}
 
-            {/* Export CSV */}
-            <button
-              type="button"
-              onClick={handleExportCSV}
-              disabled={totalNotas === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Ekspor CSV</span>
-            </button>
-
-            {/* Jump to Google Sheet History */}
-            <a
-              href="#section-nota-sheet-history"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold transition-all"
-              title="Lihat hasil dan riwayat scan nota yang tersimpan di Google Sheet"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Hasil di Sheet ↓</span>
-            </a>
+            {/* Quick Copy Delayed Notas specifically if any */}
+            {delayedCount > 0 && (
+              <button
+                type="button"
+                id="btn-copy-delayed-toolbar"
+                onClick={handleCopyDelayedNotas}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-200 shadow-2xs transition-all cursor-pointer"
+                title="Salin daftar khusus nota tertunda untuk dikirim ke tim packing via WhatsApp"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                <span>Salin {delayedCount} Nota Tertunda (WA)</span>
+              </button>
+            )}
           </div>
 
           {/* Reset / Clear List */}
@@ -2294,7 +2278,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             <button
               type="button"
               onClick={() => setConfirmClearOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer self-end sm:self-auto"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Reset Daftar Nota</span>
@@ -2483,31 +2467,32 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
         </div>
       </div>
 
-      {/* Hasil Scan di Google Sheet (Tab: Nota Diproses) */}
-      <ProcessedNotaSheetHistory
-        accessToken={accessToken ?? null}
-        userEmail={userEmail}
-        onLoginGoogle={onLoginGoogle}
-        onTokenExpired={onTokenExpired}
-        targetSpreadsheetId={targetSpreadsheetId}
-        targetSheetTab={targetSheetTab}
-        lastSyncTimestamp={lastSyncTimestamp}
-        delayThreshold={currentThreshold}
-        showToast={showToast}
-        onImportToActiveSession={handleImportSheetNotas}
-        sheetRows={sheetRows}
-        loading={sheetLoading}
-        error={sheetError}
-        onRefresh={loadSheetData}
-        lastFetchedAt={sheetLastFetchedAt}
-        resolvedTabName={sheetResolvedTab}
-        selectedStatusFilter={sheetStatusFilter}
-        onStatusFilterChange={setSheetStatusFilter}
-        selectedTimeframe={sheetTimeframe}
-        onTimeframeChange={setSheetTimeframe}
-        packedOrders={packedOrders}
-        localNotas={notas}
-      />
+      {/* Banner Pintasan Menu Riwayat Google Sheet */}
+      {onNavigateToSheetHistory && (
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200/90 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-center gap-3 text-emerald-950">
+            <div className="p-2.5 bg-white rounded-xl text-emerald-600 shadow-2xs border border-emerald-100 shrink-0">
+              <FileSpreadsheet className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-bold text-sm text-slate-900">
+                Riwayat Google Sheet Kini Berada di Tab Menu Khusus
+              </p>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Lihat data arsip, filter status packing, dan salin laporan tanpa perlu scroll ke bawah.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onNavigateToSheetHistory}
+            className="w-full sm:w-auto px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+          >
+            <span>Buka Menu Riwayat Google Sheet</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Confirmation Modal to Clear All Notas */}
       <AnimatePresence>

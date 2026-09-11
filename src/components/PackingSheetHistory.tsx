@@ -15,7 +15,7 @@ import {
   Share2,
   Check,
 } from 'lucide-react';
-import { PlatformType } from '../types';
+import { PlatformType, ToastItem, ToastOptions } from '../types';
 import { fetchPackingRegHistory } from '../services/googleWorkspace';
 import { isAuthExpiredError, invalidateStoredToken } from '../services/googleAuth';
 import { generatePackingReportText } from '../utils/notaDelay';
@@ -28,7 +28,11 @@ interface PackingSheetHistoryProps {
   targetSpreadsheetId: string;
   targetSheetTab: string;
   lastSyncTimestamp?: number;
-  showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  showToast: (
+    msg: string,
+    type?: ToastItem['type'],
+    options?: ToastOptions
+  ) => void;
 }
 
 interface SheetPackingRow {

@@ -11,6 +11,7 @@ import { HistoryModal } from './components/HistoryModal';
 import { SettingsModal } from './components/SettingsModal';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { GoogleSessionModal } from './components/GoogleSessionModal';
+import { GoogleSheetHistorySection } from './components/GoogleSheetHistorySection';
 import { ConfirmWorkspaceActionModal } from './components/ConfirmWorkspaceActionModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
 import { ToastContainer } from './components/Toast';
@@ -39,6 +40,7 @@ import {
   ExpeditionCode,
   PackageLog,
   ToastItem,
+  ToastOptions,
   DeliveryMethod,
   ActiveTab,
   PackedOrder,
@@ -62,7 +64,27 @@ export const TARGET_PACKING_SHEET_TAB = 'Packing Reg';
 export const TARGET_NOTA_SHEET_TAB = 'Nota Diproses';
 
 export default function App() {
+  const [showRekapTab, setShowRekapTab] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('app_show_rekap_tab');
+      return saved !== null ? JSON.parse(saved) : false; // Default: false (disembunyikan)
+    } catch {
+      return false;
+    }
+  });
   const [activeTab, setActiveTab] = useState<ActiveTab>('nota');
+
+  const handleToggleShowRekapTab = (show: boolean) => {
+    setShowRekapTab(show);
+    try {
+      localStorage.setItem('app_show_rekap_tab', JSON.stringify(show));
+    } catch (e) {
+      console.error('Error saving showRekapTab:', e);
+    }
+    if (!show && activeTab === 'rekap') {
+      setActiveTab('nota');
+    }
+  };
 
   // Google Authentication & Workspace state
   const [user, setUser] = useState<User | null>(() => getCachedUserProfile() as User | null);
@@ -338,15 +360,36 @@ export default function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  // Show toast utility
+  // Show toast utility with rich options support
   const showToast = useCallback(
-    (message: string, type: ToastItem['type'] = 'success') => {
+    (
+      message: string,
+      type: ToastItem['type'] = 'success',
+      options?: ToastOptions
+    ) => {
       const id = `${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, type, message }]);
+      const duration =
+        options?.duration ||
+        (options?.rowsAdded !== undefined || options?.title ? 5000 : 3500);
+
+      setToasts((prev) => [
+        ...prev,
+        {
+          id,
+          type,
+          message,
+          title: options?.title,
+          rowsAdded: options?.rowsAdded,
+          rowsSkipped: options?.rowsSkipped,
+          sheetTab: options?.sheetTab,
+          spreadsheetName: options?.spreadsheetName,
+          duration,
+        },
+      ]);
 
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 3500);
+      }, duration);
     },
     []
   );
@@ -1055,7 +1098,16 @@ export default function App() {
               }
             }
 
-            showToast('Sukses! Rekap kiriman paket berhasil disimpan ke Google Sheet.', 'success');
+            showToast(
+              `Rekap kiriman paket tanggal ${appData.date} dengan total ${total} paket (${pickupCount} Pickup, ${dropOffCount} Drop Off) berhasil disimpan ke spreadsheet Google Drive.`,
+              'success',
+              {
+                title: 'Sinkronisasi Rekap Berhasil',
+                rowsAdded: 1,
+                sheetTab: 'Rekap Harian',
+                spreadsheetName: activeSpreadsheet.name,
+              }
+            );
           } catch (err: any) {
             console.error('Error saving to Google Sheet:', err);
             setSyncProgress((prev) =>
@@ -1110,7 +1162,15 @@ export default function App() {
 
           const result = await response.json();
           if (result.result === 'success') {
-            showToast('Berhasil! Data sukses disimpan ke Google Sheet.', 'success');
+            showToast(
+              'Berhasil! 1 baris rekap harian sukses disimpan ke Google Sheet.',
+              'success',
+              {
+                title: 'Sinkronisasi Rekap Berhasil',
+                rowsAdded: 1,
+                sheetTab: 'Rekap Harian',
+              }
+            );
           } else {
             showToast(`Gagal menyimpan: ${result.error || 'Respons gagal'}`, 'error');
           }
@@ -1222,11 +1282,38 @@ export default function App() {
 
           // Berikan notifikasi akurat mengenai hasil simpan & duplikasi
           if (saveResult.added > 0 && saveResult.skippedDuplicates === 0) {
-            showToast(`${saveResult.added} paket packing berhasil disimpan ke sheet "${saveResult.targetSheet}"! Data packing paket telah otomatis direset.`, 'success');
+            showToast(
+              `Semua ${saveResult.added} nomor resi/pesanan berhasil diunggah ke sheet "${saveResult.targetSheet}". Data sesi scan packing telah otomatis direset.`,
+              'success',
+              {
+                title: 'Sinkronisasi Packing Berhasil',
+                rowsAdded: saveResult.added,
+                rowsSkipped: 0,
+                sheetTab: saveResult.targetSheet || targetTab,
+              }
+            );
           } else if (saveResult.added > 0 && saveResult.skippedDuplicates > 0) {
-            showToast(`${saveResult.added} paket baru berhasil disimpan. ${saveResult.skippedDuplicates} paket dilewati karena nomor pesanan sudah ada di sheet "${saveResult.targetSheet}" (mencegah duplikat). Data packing telah direset.`, 'success');
+            showToast(
+              `${saveResult.added} nomor resi baru berhasil disimpan ke Google Sheet. Sebanyak ${saveResult.skippedDuplicates} pesanan dilewati karena sudah ada di sheet "${saveResult.targetSheet}" (mencegah duplikat). Data packing telah direset.`,
+              'success',
+              {
+                title: 'Sinkronisasi Packing Selesai',
+                rowsAdded: saveResult.added,
+                rowsSkipped: saveResult.skippedDuplicates,
+                sheetTab: saveResult.targetSheet || targetTab,
+              }
+            );
           } else {
-            showToast(`Semua ${saveResult.skippedDuplicates} nomor pesanan sudah pernah tersimpan sebelumnya di sheet "${saveResult.targetSheet}". Tidak ada data duplikat yang disimpan. Data packing telah direset.`, 'info');
+            showToast(
+              `Semua ${saveResult.skippedDuplicates} nomor pesanan sudah pernah tersimpan sebelumnya di sheet "${saveResult.targetSheet}". Tidak ada baris baru yang diunggah. Data packing telah direset.`,
+              'info',
+              {
+                title: 'Data Sudah Tersimpan',
+                rowsAdded: 0,
+                rowsSkipped: saveResult.skippedDuplicates,
+                sheetTab: saveResult.targetSheet || targetTab,
+              }
+            );
           }
 
           setLastPackingSyncTime(Date.now());
@@ -1345,18 +1432,36 @@ export default function App() {
 
           if (saveResult.added > 0 && saveResult.skippedDuplicates === 0) {
             showToast(
-              `${saveResult.added} nota berhasil disimpan ke tab "${saveResult.targetSheet}" Google Sheet! Sesi scan lokal otomatis dikosongkan.`,
-              'success'
+              `Semua ${saveResult.added} data nota admin berhasil diunggah ke tab "${saveResult.targetSheet}" Google Sheet. Antrean sesi scan lokal telah otomatis dikosongkan.`,
+              'success',
+              {
+                title: 'Sinkronisasi Nota Berhasil',
+                rowsAdded: saveResult.added,
+                rowsSkipped: 0,
+                sheetTab: saveResult.targetSheet || targetTab,
+              }
             );
           } else if (saveResult.added > 0 && saveResult.skippedDuplicates > 0) {
             showToast(
-              `${saveResult.added} nota baru disimpan. ${saveResult.skippedDuplicates} nota dilewati karena sudah ada di sheet "${saveResult.targetSheet}". Sesi scan lokal otomatis dikosongkan.`,
-              'success'
+              `${saveResult.added} nota baru berhasil diunggah ke tab "${saveResult.targetSheet}". Sebanyak ${saveResult.skippedDuplicates} nota dilewati karena nomor pesanan sudah ada di sheet. Sesi scan lokal telah dikosongkan.`,
+              'success',
+              {
+                title: 'Sinkronisasi Nota Selesai',
+                rowsAdded: saveResult.added,
+                rowsSkipped: saveResult.skippedDuplicates,
+                sheetTab: saveResult.targetSheet || targetTab,
+              }
             );
           } else {
             showToast(
-              `Semua ${saveResult.skippedDuplicates} nota sudah ada sebelumnya di sheet "${saveResult.targetSheet}". Sesi scan lokal otomatis dikosongkan.`,
-              'info'
+              `Semua ${saveResult.skippedDuplicates} nota sudah tercatat sebelumnya di sheet "${saveResult.targetSheet}". Tidak ada baris baru yang diunggah. Sesi scan lokal telah dikosongkan.`,
+              'info',
+              {
+                title: 'Semua Nota Sudah Tercatat',
+                rowsAdded: 0,
+                rowsSkipped: saveResult.skippedDuplicates,
+                sheetTab: saveResult.targetSheet || targetTab,
+              }
             );
           }
 
@@ -1422,6 +1527,7 @@ export default function App() {
           notaCount={processedNotas.length}
           pendingNotaCount={processedNotas.filter((n) => !n.isPacked).length}
           delayedNotaCount={delayedNotaCount}
+          showRekapTab={showRekapTab}
           user={user}
           activeSpreadsheet={activeSpreadsheet}
           onOpenGoogleDriveModal={() => setIsGoogleDriveModalOpen(true)}
@@ -1434,7 +1540,7 @@ export default function App() {
           onExportCSV={handleExportCSV}
         />
 
-        {activeTab === 'rekap' && (
+        {showRekapTab && activeTab === 'rekap' && (
           <>
             {/* 4 Expedition Summary Cards */}
             <ExpeditionCards counts={appData.counts} />
@@ -1492,6 +1598,7 @@ export default function App() {
             processedNotas={processedNotas}
             delayThreshold={delayThreshold}
             onNavigateToNotas={() => setActiveTab('nota')}
+            onNavigateToSheetHistory={() => setActiveTab('sheet_history')}
           />
         )}
 
@@ -1519,8 +1626,32 @@ export default function App() {
             targetSheetTab={TARGET_NOTA_SHEET_TAB}
             lastSyncTimestamp={lastNotaSyncTime}
             onNavigateToPacking={() => setActiveTab('packing')}
+            onNavigateToSheetHistory={() => setActiveTab('sheet_history')}
             delayThreshold={delayThreshold}
             onDelayThresholdChange={handleUpdateDelayThreshold}
+          />
+        )}
+
+        {activeTab === 'sheet_history' && (
+          /* Dedicated Google Sheet History Section */
+          <GoogleSheetHistorySection
+            accessToken={accessToken}
+            userEmail={user?.email}
+            onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
+            onTokenExpired={() => {
+              setAccessToken(null);
+              setIsGoogleSessionModalOpen(true);
+            }}
+            targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
+            targetPackingTab={TARGET_PACKING_SHEET_TAB}
+            targetNotaTab={TARGET_NOTA_SHEET_TAB}
+            lastSyncTimestamp={Math.max(lastPackingSyncTime, lastNotaSyncTime)}
+            showToast={showToast}
+            packedOrders={packedOrders}
+            localNotas={processedNotas}
+            activeSpreadsheet={activeSpreadsheet}
+            csvUrl={csvUrl}
+            showRekapTab={showRekapTab}
           />
         )}
       </div>
@@ -1602,6 +1733,8 @@ export default function App() {
         webAppUrl={webAppUrl}
         csvUrl={csvUrl}
         onSaveUrls={handleSaveUrls}
+        showRekapTab={showRekapTab}
+        onToggleShowRekapTab={handleToggleShowRekapTab}
       />
 
       {/* Floating Notifications */}

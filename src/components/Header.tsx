@@ -24,6 +24,7 @@ interface HeaderProps {
   notaCount?: number;
   pendingNotaCount?: number;
   delayedNotaCount?: number;
+  showRekapTab?: boolean;
   user: User | null;
   activeSpreadsheet: ActiveSpreadsheet | null;
   onOpenGoogleDriveModal: () => void;
@@ -44,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   notaCount = 0,
   pendingNotaCount = 0,
   delayedNotaCount = 0,
+  showRekapTab = false,
   user,
   activeSpreadsheet,
   onOpenGoogleDriveModal,
@@ -246,26 +248,52 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </button>
 
+          {showRekapTab && (
+            <button
+              type="button"
+              id="nav-tab-rekap"
+              onClick={() => onTabChange('rekap')}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'rekap'
+                  ? 'bg-white text-indigo-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Truck className="w-4 h-4 text-indigo-600" />
+              <span>Rekap Kiriman Reguler</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                  activeTab === 'rekap'
+                    ? 'bg-indigo-100 text-indigo-800'
+                    : 'bg-slate-200/70 text-slate-600'
+                }`}
+              >
+                {total}
+              </span>
+            </button>
+          )}
+
           <button
             type="button"
-            id="nav-tab-rekap"
-            onClick={() => onTabChange('rekap')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
-              activeTab === 'rekap'
-                ? 'bg-white text-indigo-700 shadow-xs'
+            id="nav-tab-sheet-history"
+            onClick={() => onTabChange('sheet_history')}
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'sheet_history'
+                ? 'bg-white text-emerald-900 shadow-xs ring-1 ring-emerald-200/80'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Truck className="w-4 h-4 text-indigo-600" />
-            <span>Rekap Kiriman Reguler</span>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Riwayat Google Sheet</span>
             <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
-                activeTab === 'rekap'
-                  ? 'bg-indigo-100 text-indigo-800'
+              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
+                activeTab === 'sheet_history'
+                  ? 'bg-emerald-100 text-emerald-900'
                   : 'bg-slate-200/70 text-slate-600'
               }`}
             >
-              {total}
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+              <span>Cloud</span>
             </span>
           </button>
         </div>

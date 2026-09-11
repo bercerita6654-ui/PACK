@@ -27,7 +27,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { PackedOrder, PlatformType, ProcessedNota } from '../types';
+import { PackedOrder, PlatformType, ProcessedNota, ToastItem, ToastOptions } from '../types';
 import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
 import { PackingSheetHistory } from './PackingSheetHistory';
@@ -49,7 +49,11 @@ interface PackingSectionProps {
   onClearOrders: () => void;
   onSyncGoogleSheet?: () => void;
   isSyncing?: boolean;
-  showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  showToast: (
+    msg: string,
+    type?: ToastItem['type'],
+    options?: ToastOptions
+  ) => void;
   accessToken?: string | null;
   userEmail?: string;
   onLoginGoogle?: () => void;
@@ -59,6 +63,7 @@ interface PackingSectionProps {
   lastSyncTimestamp?: number;
   processedNotas?: ProcessedNota[];
   onNavigateToNotas?: () => void;
+  onNavigateToSheetHistory?: () => void;
   delayThreshold?: number;
 }
 
@@ -89,6 +94,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
   lastSyncTimestamp,
   processedNotas = [],
   onNavigateToNotas,
+  onNavigateToSheetHistory,
   delayThreshold = DEFAULT_DELAY_THRESHOLD_MINUTES,
 }) => {
   // Navigation between Single Rapid Scan and Batch Paste
@@ -1294,17 +1300,32 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
         </div>
       </div>
 
-      {/* Google Spreadsheet Saved History Section (Packing Reg) */}
-      <PackingSheetHistory
-        accessToken={accessToken || null}
-        userEmail={userEmail}
-        onLoginGoogle={onLoginGoogle}
-        onTokenExpired={onTokenExpired}
-        targetSpreadsheetId={targetSpreadsheetId}
-        targetSheetTab={targetSheetTab}
-        lastSyncTimestamp={lastSyncTimestamp}
-        showToast={showToast}
-      />
+      {/* Banner Pintasan Menu Riwayat Google Sheet */}
+      {onNavigateToSheetHistory && (
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200/90 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-center gap-3 text-emerald-950">
+            <div className="p-2.5 bg-white rounded-xl text-emerald-600 shadow-2xs border border-emerald-100 shrink-0">
+              <Sparkles className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="font-bold text-sm text-slate-900">
+                Riwayat Tab "Packing Reg" Kini Berada di Menu Riwayat Google Sheet
+              </p>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Pantau seluruh arsip data Google Sheet tanpa perlu scroll panjang ke bawah.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onNavigateToSheetHistory}
+            className="w-full sm:w-auto px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+          >
+            <span>Buka Menu Riwayat Google Sheet</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Clear Confirmation Modal */}
       <AnimatePresence>

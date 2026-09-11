@@ -20,7 +20,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { EXPEDITION_KEYS, EXPEDITIONS } from '../data/constants';
-import { ExpeditionCode, PackageLog, DeliveryMethod } from '../types';
+import { ExpeditionCode, PackageLog, DeliveryMethod, ToastItem, ToastOptions } from '../types';
 
 interface LogTableProps {
   logs: PackageLog[];
@@ -31,7 +31,11 @@ interface LogTableProps {
   onPromptReset: () => void;
   onSyncGoogleSheet: () => void;
   onOpenHistory: () => void;
-  showToast?: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  showToast?: (
+    msg: string,
+    type?: ToastItem['type'],
+    options?: ToastOptions
+  ) => void;
 }
 
 type DateFilterPreset = 'today' | 'yesterday' | '7days' | 'all' | 'custom';

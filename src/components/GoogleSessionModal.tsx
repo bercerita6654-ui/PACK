@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User } from 'firebase/auth';
-import { ActiveSpreadsheet } from '../types';
+import { ActiveSpreadsheet, ToastItem, ToastOptions } from '../types';
 import { isStoredTokenValid } from '../services/googleAuth';
 
 interface GoogleSessionModalProps {
@@ -30,7 +30,11 @@ interface GoogleSessionModalProps {
   onSignOut: () => Promise<void>;
   onOpenDriveManager: () => void;
   activeSpreadsheet: ActiveSpreadsheet | null;
-  showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  showToast: (
+    msg: string,
+    type?: ToastItem['type'],
+    options?: ToastOptions
+  ) => void;
 }
 
 export const GoogleSessionModal: React.FC<GoogleSessionModalProps> = ({
