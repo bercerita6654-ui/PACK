@@ -25,6 +25,7 @@ import {
   LogIn,
   Calendar,
   CloudUpload,
+  Info,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ProcessedNota, PlatformType, PackedOrder, ToastItem, ToastOptions } from '../types';
@@ -496,7 +497,8 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const sheetTotalCount = dashboardFilteredSheetRows.length;
   const sheetPackedCount = useMemo(() => dashboardFilteredSheetRows.filter((r) => r.isPacked).length, [dashboardFilteredSheetRows]);
   const sheetPendingCount = sheetTotalCount - sheetPackedCount;
-  const sheetOverdueCount = useMemo(() => {
+  // Overdue count strictly within current filtered timeframe
+  const sheetPeriodOverdueCount = useMemo(() => {
     return dashboardFilteredSheetRows.filter((r) => {
       if (r.isPacked) return false;
       const d = parseNotaDateTime(r.adminDate, r.adminTime);
@@ -505,6 +507,20 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
       return elapsed >= currentThreshold;
     }).length;
   }, [dashboardFilteredSheetRows, nowMs, currentThreshold]);
+
+  // Overdue count across ALL sheet rows (cumulative pendingan across all data)
+  const sheetAllOverdueCount = useMemo(() => {
+    return sheetRows.filter((r) => {
+      if (r.isPacked) return false;
+      const d = parseNotaDateTime(r.adminDate, r.adminTime);
+      if (!d) return false;
+      const elapsed = Math.floor((nowMs - d.getTime()) / 60000);
+      return elapsed >= currentThreshold;
+    }).length;
+  }, [sheetRows, nowMs, currentThreshold]);
+
+  // Default displayed overdue count is across ALL data so pending notes are never missed
+  const sheetOverdueCount = sheetAllOverdueCount;
 
   const sheetShopeeCount = useMemo(() => dashboardFilteredSheetRows.filter((r) => r.platform === 'Shopee').length, [dashboardFilteredSheetRows]);
   const sheetTokpedCount = useMemo(() => dashboardFilteredSheetRows.filter((r) => r.platform === 'Tokopedia/TikTok').length, [dashboardFilteredSheetRows]);
@@ -592,6 +608,10 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   };
 
   const handleFilterAndScrollSheet = (status: 'all' | 'pending' | 'overdue' | 'packed') => {
+    if (status === 'overdue') {
+      // Switch timeframe to 'all' so that overdue notes from earlier dates are visible in the table
+      setSheetTimeframe('all');
+    }
     setSheetStatusFilter(status);
     const element = document.getElementById('section-nota-sheet-history');
     if (element) {
@@ -1383,41 +1403,71 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             </p>
           </div>
 
-          {/* Card 3: TERTUNDA > 1 HARI (Alert Overdue from Sheet) */}
+          {/* Card 3: TERTUNDA > 1 HARI (Alert Overdue from Sheet - All Data Pending) */}
           <div
             id="card-sheet-overdue"
             onClick={() => handleFilterAndScrollSheet('overdue')}
             className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-200 relative overflow-hidden group ${
               sheetStatusFilter === 'overdue'
                 ? 'bg-rose-950/80 border-rose-400 ring-2 ring-rose-400/50'
-                : sheetOverdueCount > 0
+                : sheetAllOverdueCount > 0
                 ? 'bg-rose-950/50 hover:bg-rose-950/70 border-rose-500/50'
                 : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700'
             }`}
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-rose-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <AlertTriangle className={`w-3.5 h-3.5 ${sheetOverdueCount > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-400'}`} />
+                <AlertTriangle className={`w-3.5 h-3.5 ${sheetAllOverdueCount > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-400'}`} />
                 Tertunda &gt;{formatThresholdLabel(currentThreshold)}
               </span>
-              {sheetOverdueCount > 0 && (
-                <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black animate-pulse">
-                  Perlu Cek!
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="px-2 py-0.5 bg-rose-500/25 text-rose-200 border border-rose-400/40 rounded-full text-[10px] font-black flex items-center gap-1 shadow-2xs"
+                  title="Monitoring akumulasi semua data Google Sheet agar pendingan tidak terlewat"
+                >
+                  <Info className="w-3 h-3 text-rose-300 shrink-0" />
+                  <span>Semua Data</span>
+                </span>
+                {sheetAllOverdueCount > 0 && (
+                  <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black animate-pulse">
+                    Perlu Cek!
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-3xl sm:text-4xl font-black tracking-tight ${sheetAllOverdueCount > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
+                {sheetLoading ? '...' : sheetAllOverdueCount}
+              </span>
+              <span className="text-xs text-slate-300 font-medium">Nota</span>
+              {sheetTimeframe !== 'all' && (
+                <span className="text-[10px] font-bold text-rose-300/80 ml-auto bg-rose-950/80 px-2 py-0.5 rounded-md border border-rose-500/30">
+                  {sheetTimeframe === 'today'
+                    ? 'Hari ini'
+                    : sheetTimeframe === 'yesterday'
+                    ? 'Kemarin'
+                    : sheetTimeframe === 'week'
+                    ? 'Minggu ini'
+                    : 'Bulan ini'}
+                  : {sheetPeriodOverdueCount}
                 </span>
               )}
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className={`text-3xl sm:text-4xl font-black tracking-tight ${sheetOverdueCount > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
-                {sheetLoading ? '...' : sheetOverdueCount}
-              </span>
-              <span className="text-xs text-slate-400 font-medium">Nota</span>
+            {/* Tanda Informasi Pendingan Semua Data */}
+            <div className="mt-2.5 pt-2 border-t border-rose-500/25 flex flex-col gap-0.5">
+              <div className="flex items-center justify-between text-[11px] text-rose-200">
+                <span className="flex items-center gap-1 font-bold">
+                  <Info className="w-3 h-3 text-rose-400 shrink-0" />
+                  <span>Akumulasi Pendingan Semua Data</span>
+                </span>
+                <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform text-rose-300">
+                  Lihat Detail →
+                </span>
+              </div>
+              <p className="text-[10px] text-rose-300/80 leading-tight">
+                Tetap memantau seluruh nota tertunda yang belum di-packing lintas tanggal agar tidak ada pesanan tertinggal.
+              </p>
             </div>
-            <p className="text-[11px] text-rose-300/80 mt-2 flex items-center justify-between">
-              <span>{sheetOverdueCount > 0 ? 'Melebihi batas waktu' : 'Semua tepat waktu'}</span>
-              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform">
-                Filter Tabel →
-              </span>
-            </p>
           </div>
 
           {/* Card 4: TOTAL NOTA SESUAI PERIODE */}
