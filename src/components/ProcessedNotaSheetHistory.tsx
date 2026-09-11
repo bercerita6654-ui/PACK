@@ -33,6 +33,7 @@ import {
   DEFAULT_DELAY_THRESHOLD_MINUTES,
   evaluateNotaPackedStatus,
   isDateToday,
+  isDateYesterday,
   isDateThisWeek,
   isDateThisMonth,
   normalizeOrderNumber,
@@ -65,8 +66,8 @@ export interface ProcessedNotaSheetHistoryProps {
   resolvedTabName?: string;
   selectedStatusFilter?: 'all' | 'pending' | 'overdue' | 'packed';
   onStatusFilterChange?: (filter: 'all' | 'pending' | 'overdue' | 'packed') => void;
-  selectedTimeframe?: 'today' | 'week' | 'month' | 'all';
-  onTimeframeChange?: (timeframe: 'today' | 'week' | 'month' | 'all') => void;
+  selectedTimeframe?: 'today' | 'yesterday' | 'week' | 'month' | 'all';
+  onTimeframeChange?: (timeframe: 'today' | 'yesterday' | 'week' | 'month' | 'all') => void;
   packedOrders?: PackedOrder[];
   localNotas?: ProcessedNota[];
 }
@@ -158,7 +159,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
   const [platformFilter, setPlatformFilter] = useState<'Semua' | 'Shopee' | 'Tokopedia/TikTok'>('Semua');
   const [sourceTabFilter, setSourceTabFilter] = useState<'all' | 'nota' | 'packing'>('all');
   const [internalStatusFilter, setInternalStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
-  const [internalTimeframe, setInternalTimeframe] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [internalTimeframe, setInternalTimeframe] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>('today');
 
   const statusFilter = selectedStatusFilter !== undefined ? selectedStatusFilter : internalStatusFilter;
   const setStatusFilter = (val: 'all' | 'pending' | 'overdue' | 'packed') => {
@@ -169,7 +170,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
   };
 
   const timeframe = selectedTimeframe !== undefined ? selectedTimeframe : internalTimeframe;
-  const setTimeframe = (val: 'today' | 'week' | 'month' | 'all') => {
+  const setTimeframe = (val: 'today' | 'yesterday' | 'week' | 'month' | 'all') => {
     setInternalTimeframe(val);
     if (onTimeframeChange) {
       onTimeframeChange(val);
@@ -503,6 +504,8 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     let effectiveRows = sheetRows;
     if (timeframe === 'today') {
       effectiveRows = sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime));
+    } else if (timeframe === 'yesterday') {
+      effectiveRows = sheetRows.filter((r) => isDateYesterday(r.adminDate, r.adminTime));
     } else if (timeframe === 'week') {
       effectiveRows = sheetRows.filter((r) => isDateThisWeek(r.adminDate, r.adminTime));
     } else if (timeframe === 'month') {
@@ -552,6 +555,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
 
       const matchTimeframe = (() => {
         if (timeframe === 'today') return isDateToday(row.adminDate, row.adminTime);
+        if (timeframe === 'yesterday') return isDateYesterday(row.adminDate, row.adminTime);
         if (timeframe === 'week') return isDateThisWeek(row.adminDate, row.adminTime);
         if (timeframe === 'month') return isDateThisMonth(row.adminDate, row.adminTime);
         return true;
@@ -605,6 +609,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     // Find last packed time in effective period rows
     const effectiveRows = sheetRows.filter((r) => {
       if (timeframe === 'today') return isDateToday(r.adminDate, r.adminTime);
+      if (timeframe === 'yesterday') return isDateYesterday(r.adminDate, r.adminTime);
       if (timeframe === 'week') return isDateThisWeek(r.adminDate, r.adminTime);
       if (timeframe === 'month') return isDateThisMonth(r.adminDate, r.adminTime);
       return true;
@@ -622,6 +627,13 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
       }
     }
 
+    const shopeeTotal = effectiveRows.filter((r) => r.platform === 'Shopee').length;
+    const tokpedTotal = effectiveRows.filter((r) => r.platform === 'Tokopedia/TikTok').length;
+    const shopeePacked = effectiveRows.filter((r) => r.isPacked && r.platform === 'Shopee').length;
+    const tokpedPacked = effectiveRows.filter((r) => r.isPacked && r.platform === 'Tokopedia/TikTok').length;
+    const shopeePending = shopeeTotal - shopeePacked;
+    const tokpedPending = tokpedTotal - tokpedPacked;
+
     const reportText = generatePackingReportText({
       totalCount: periodStats.totalPeriod,
       packedCount: periodStats.packedPeriod,
@@ -629,6 +641,11 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
       timeframe,
       lastPackedTimeStr: lastPackedTimeStr || undefined,
       customDate: new Date(),
+      breakdown: {
+        total: { shopee: shopeeTotal, tokped: tokpedTotal },
+        packed: { shopee: shopeePacked, tokped: tokpedPacked },
+        pending: { shopee: shopeePending, tokped: tokpedPending },
+      },
     });
 
     try {
@@ -897,6 +914,8 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
               <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
                 {timeframe === 'today'
                   ? 'Status Kerja Harian (Hari Ini)'
+                  : timeframe === 'yesterday'
+                  ? 'Status Kerja Hari Kemarin'
                   : timeframe === 'week'
                   ? 'Status Kerja Mingguan (Minggu Ini)'
                   : timeframe === 'month'
@@ -940,7 +959,19 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Harian
+                Hari Ini
+              </button>
+              <button
+                type="button"
+                id="btn-sheet-history-timeframe-yesterday"
+                onClick={() => setTimeframe('yesterday')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  timeframe === 'yesterday'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Kemarin
               </button>
               <button
                 type="button"
@@ -1000,6 +1031,8 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                   Total Nota (
                   {timeframe === 'today'
                     ? 'Hari Ini'
+                    : timeframe === 'yesterday'
+                    ? 'Kemarin'
                     : timeframe === 'week'
                     ? 'Minggu Ini'
                     : timeframe === 'month'

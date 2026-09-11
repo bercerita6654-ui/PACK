@@ -198,6 +198,9 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
       return;
     }
 
+    const shopeeTotal = sheetRows.filter((r) => r.platform === 'Shopee').length;
+    const tokpedTotal = sheetRows.filter((r) => r.platform === 'Tokopedia/TikTok').length;
+
     const reportText = generatePackingReportText({
       totalCount: sheetRows.length,
       packedCount: sheetRows.length, // All items in Packing Reg are already packed
@@ -205,6 +208,11 @@ export const PackingSheetHistory: React.FC<PackingSheetHistoryProps> = ({
       timeframe: 'today',
       lastPackedTimeStr: sheetRows.length > 0 ? sheetRows[sheetRows.length - 1].timestamp : undefined,
       customDate: new Date(),
+      breakdown: {
+        total: { shopee: shopeeTotal, tokped: tokpedTotal },
+        packed: { shopee: shopeeTotal, tokped: tokpedTotal },
+        pending: { shopee: 0, tokped: 0 },
+      },
     });
 
     try {

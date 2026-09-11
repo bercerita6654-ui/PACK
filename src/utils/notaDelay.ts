@@ -233,6 +233,82 @@ export function evaluateNotaPackedStatus(
 }
 
 /**
+ * Checks whether a given date or timestamp is from yesterday.
+ */
+export function isDateYesterday(
+  dateStr?: string,
+  timeStr?: string,
+  createdAtMs?: number
+): boolean {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (createdAtMs && !isNaN(createdAtMs) && createdAtMs > 0) {
+    const cd = new Date(createdAtMs);
+    if (!isNaN(cd.getTime())) {
+      return (
+        cd.getFullYear() === yesterday.getFullYear() &&
+        cd.getMonth() === yesterday.getMonth() &&
+        cd.getDate() === yesterday.getDate()
+      );
+    }
+  }
+
+  if (dateStr && dateStr !== '-') {
+    const d = parseNotaDateTime(dateStr, timeStr);
+    if (d && !isNaN(d.getTime())) {
+      return (
+        d.getFullYear() === yesterday.getFullYear() &&
+        d.getMonth() === yesterday.getMonth() &&
+        d.getDate() === yesterday.getDate()
+      );
+    }
+
+    const clean = dateStr.trim().toLowerCase();
+    const day = String(yesterday.getDate());
+    const month = String(yesterday.getMonth() + 1);
+    const year = String(yesterday.getFullYear());
+    const padD = day.padStart(2, '0');
+    const padM = month.padStart(2, '0');
+
+    const monthNames = [
+      'januari',
+      'februari',
+      'maret',
+      'april',
+      'mei',
+      'juni',
+      'juli',
+      'agustus',
+      'september',
+      'oktober',
+      'november',
+      'desember',
+    ];
+    const curMonthName = monthNames[yesterday.getMonth()];
+
+    if (
+      clean.includes(curMonthName) &&
+      (clean.includes(day) || clean.includes(padD)) &&
+      clean.includes(year)
+    ) {
+      return true;
+    }
+
+    if (
+      clean.includes(`${padD}/${padM}/${year}`) ||
+      clean.includes(`${day}/${month}/${year}`) ||
+      clean.includes(`${year}-${padM}-${padD}`) ||
+      clean.includes(`${padD}-${padM}-${year}`)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Checks whether a given date or timestamp is from today.
  */
 export function isDateToday(
@@ -583,16 +659,44 @@ export function isNotaDelayed(
   return getNotaElapsedMinutes(nota, nowMs) >= thresholdMinutes;
 }
 
+export interface PackingReportPlatformCounts {
+  shopee: number;
+  tokped: number;
+  other?: number;
+}
+
+export interface GeneratePackingReportParams {
+  totalCount: number;
+  packedCount: number;
+  pendingCount: number;
+  timeframe?: 'today' | 'yesterday' | 'week' | 'month' | 'all';
+  lastPackedTimeStr?: string;
+  customDate?: Date;
+  breakdown?: {
+    total?: PackingReportPlatformCounts;
+    packed?: PackingReportPlatformCounts;
+    pending?: PackingReportPlatformCounts;
+  };
+}
+
 /**
  * Generates formatted text report for Packing Status (Data Google Sheets).
  *
  * Example Output:
- * KAMIS, 10 September 2026 (16:00)
  * *Update Harian Pesanan REG*
+ * Jumat, 11 September 2026 (09:28)
  *
- * TOTAL HARIAN      : 34 nota
- * SUDAH PACKING  : 20 nota (last update 17:00)
- * BELUM PACKING  : 14 nota
+ * *TOTAL HARIAN  :*
+ * - Shopee : 17
+ * - Tokped : 4
+ *
+ * *SUDAH PACKING : (last update 09:28)*
+ * - Shopee : 0
+ * - Tokped : 0
+ *
+ * *BELUM PACKING : 21 nota*
+ * - Shopee : 17
+ * - Tokped : 4
  */
 export function generatePackingReportText({
   totalCount,
@@ -601,19 +705,17 @@ export function generatePackingReportText({
   timeframe = 'today',
   lastPackedTimeStr,
   customDate,
-}: {
-  totalCount: number;
-  packedCount: number;
-  pendingCount: number;
-  timeframe?: 'today' | 'week' | 'month' | 'all';
-  lastPackedTimeStr?: string;
-  customDate?: Date;
-}): string {
+  breakdown,
+}: GeneratePackingReportParams): string {
   const now = customDate || new Date();
+  const reportDate =
+    timeframe === 'yesterday'
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, now.getHours(), now.getMinutes())
+      : now;
 
-  // Indonesian Day Name in UPPERCASE (e.g. KAMIS)
-  const dayNames = ['MINGGU', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
-  const dayName = dayNames[now.getDay()];
+  // Indonesian Day Name in Title Case (e.g. Jumat)
+  const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const dayName = dayNames[reportDate.getDay()];
 
   // Indonesian Month Name
   const monthNames = [
@@ -630,32 +732,67 @@ export function generatePackingReportText({
     'November',
     'Desember',
   ];
-  const dateFormatted = `${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+  const dateFormatted = `${reportDate.getDate()} ${monthNames[reportDate.getMonth()]} ${reportDate.getFullYear()}`;
   const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
   // Title and Total label according to timeframe
-  let titleText = '*Update Harian Pesanan REG*';
-  let totalLabel = 'TOTAL HARIAN     ';
+  let titleText = 'Update Harian Pesanan REG';
+  let totalLabel = 'TOTAL HARIAN';
 
-  if (timeframe === 'week') {
-    titleText = '*Update Mingguan Pesanan REG*';
-    totalLabel = 'TOTAL MINGGUAN   ';
+  if (timeframe === 'yesterday') {
+    titleText = 'Update Kemarin Pesanan REG';
+    totalLabel = 'TOTAL KEMARIN';
+  } else if (timeframe === 'week') {
+    titleText = 'Update Mingguan Pesanan REG';
+    totalLabel = 'TOTAL MINGGUAN';
   } else if (timeframe === 'month') {
-    titleText = '*Update Bulanan Pesanan REG*';
-    totalLabel = 'TOTAL BULANAN    ';
+    titleText = 'Update Bulanan Pesanan REG';
+    totalLabel = 'TOTAL BULANAN';
   } else if (timeframe === 'all') {
-    titleText = '*Update Pesanan REG*';
-    totalLabel = 'TOTAL NOTA       ';
+    titleText = 'Update Pesanan REG';
+    totalLabel = 'TOTAL NOTA';
   }
 
   const lastUpdate =
     lastPackedTimeStr && lastPackedTimeStr !== '-' ? lastPackedTimeStr : timeFormatted;
 
-  return `${dayName}, ${dateFormatted} (${timeFormatted})
-${titleText}
+  const shopeeTotal = breakdown?.total?.shopee ?? totalCount;
+  const tokpedTotal = breakdown?.total?.tokped ?? 0;
+  const otherTotal = breakdown?.total?.other ?? 0;
 
-${totalLabel} : ${totalCount} nota
-SUDAH PACKING  : ${packedCount} nota (last update ${lastUpdate})
-BELUM PACKING  : ${pendingCount} nota`;
+  const shopeePacked = breakdown?.packed?.shopee ?? packedCount;
+  const tokpedPacked = breakdown?.packed?.tokped ?? 0;
+  const otherPacked = breakdown?.packed?.other ?? 0;
+
+  const shopeePending = breakdown?.pending?.shopee ?? pendingCount;
+  const tokpedPending = breakdown?.pending?.tokped ?? 0;
+  const otherPending = breakdown?.pending?.other ?? 0;
+
+  let totalLines = `- Shopee : ${shopeeTotal}\n- Tokped : ${tokpedTotal}`;
+  if (otherTotal > 0) {
+    totalLines += `\n- Lainnya : ${otherTotal}`;
+  }
+
+  let packedLines = `- Shopee : ${shopeePacked}\n- Tokped : ${tokpedPacked}`;
+  if (otherPacked > 0) {
+    packedLines += `\n- Lainnya : ${otherPacked}`;
+  }
+
+  let pendingLines = `- Shopee : ${shopeePending}\n- Tokped : ${tokpedPending}`;
+  if (otherPending > 0) {
+    pendingLines += `\n- Lainnya : ${otherPending}`;
+  }
+
+  return `*${titleText}*
+${dayName}, ${dateFormatted} (${timeFormatted})
+
+*${totalLabel}  :*
+${totalLines}
+
+*SUDAH PACKING : (last update ${lastUpdate})*
+${packedLines}
+
+*BELUM PACKING : ${pendingCount} nota*
+${pendingLines}`;
 }
 

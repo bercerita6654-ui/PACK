@@ -463,6 +463,20 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     const lastPackedTimeStr =
       orders.length > 0 ? orders[orders.length - 1].timestamp : undefined;
 
+    const sourceRows = processedNotas && processedNotas.length > 0 ? processedNotas : orders;
+    const shopeeTotal = sourceRows.filter((n) => n.platform === 'Shopee').length;
+    const tokpedTotal = sourceRows.filter((n) => n.platform === 'Tokopedia/TikTok').length;
+    const shopeePacked =
+      processedNotas && processedNotas.length > 0
+        ? processedNotas.filter((n) => n.isPacked && n.platform === 'Shopee').length
+        : orders.filter((o) => o.platform === 'Shopee').length;
+    const tokpedPacked =
+      processedNotas && processedNotas.length > 0
+        ? processedNotas.filter((n) => n.isPacked && n.platform === 'Tokopedia/TikTok').length
+        : orders.filter((o) => o.platform === 'Tokopedia/TikTok').length;
+    const shopeePending = Math.max(0, shopeeTotal - shopeePacked);
+    const tokpedPending = Math.max(0, tokpedTotal - tokpedPacked);
+
     const reportText = generatePackingReportText({
       totalCount: totalNotas,
       packedCount: packedNotas,
@@ -470,6 +484,11 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
       timeframe: 'today',
       lastPackedTimeStr,
       customDate: new Date(),
+      breakdown: {
+        total: { shopee: shopeeTotal, tokped: tokpedTotal },
+        packed: { shopee: shopeePacked, tokped: tokpedPacked },
+        pending: { shopee: shopeePending, tokped: tokpedPending },
+      },
     });
 
     try {

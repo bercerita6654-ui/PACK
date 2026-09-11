@@ -40,6 +40,7 @@ import {
   parseNotaDateTime,
   evaluateNotaPackedStatus,
   isDateToday,
+  isDateYesterday,
   isDateThisWeek,
   isDateThisMonth,
   normalizeOrderNumber,
@@ -201,7 +202,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const [sheetResolvedPackingTab, setSheetResolvedPackingTab] = useState<string>('Packing Reg');
   const [sheetTotalPackingInSheet, setSheetTotalPackingInSheet] = useState<number>(0);
   const [sheetStatusFilter, setSheetStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
-  const [sheetTimeframe, setSheetTimeframe] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [sheetTimeframe, setSheetTimeframe] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>('today');
 
   // Fetch data from Google Sheets - cross-referencing "Nota Diproses" & "Packing Reg"
   const loadSheetData = useCallback(async () => {
@@ -479,6 +480,9 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     if (sheetTimeframe === 'today') {
       return sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime));
     }
+    if (sheetTimeframe === 'yesterday') {
+      return sheetRows.filter((r) => isDateYesterday(r.adminDate, r.adminTime));
+    }
     if (sheetTimeframe === 'week') {
       return sheetRows.filter((r) => isDateThisWeek(r.adminDate, r.adminTime));
     }
@@ -504,10 +508,21 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
 
   const sheetShopeeCount = useMemo(() => dashboardFilteredSheetRows.filter((r) => r.platform === 'Shopee').length, [dashboardFilteredSheetRows]);
   const sheetTokpedCount = useMemo(() => dashboardFilteredSheetRows.filter((r) => r.platform === 'Tokopedia/TikTok').length, [dashboardFilteredSheetRows]);
+  const sheetShopeePackedCount = useMemo(
+    () => dashboardFilteredSheetRows.filter((r) => r.isPacked && r.platform === 'Shopee').length,
+    [dashboardFilteredSheetRows]
+  );
+  const sheetTokpedPackedCount = useMemo(
+    () => dashboardFilteredSheetRows.filter((r) => r.isPacked && r.platform === 'Tokopedia/TikTok').length,
+    [dashboardFilteredSheetRows]
+  );
+  const sheetShopeePendingCount = sheetShopeeCount - sheetShopeePackedCount;
+  const sheetTokpedPendingCount = sheetTokpedCount - sheetTokpedPackedCount;
   const sheetProgressPercent = sheetTotalCount > 0 ? Math.round((sheetPackedCount / sheetTotalCount) * 100) : 0;
 
   // Counts for all timeframes for badge counters
   const sheetTodayTotal = useMemo(() => sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime)).length, [sheetRows]);
+  const sheetYesterdayTotal = useMemo(() => sheetRows.filter((r) => isDateYesterday(r.adminDate, r.adminTime)).length, [sheetRows]);
   const sheetWeekTotal = useMemo(() => sheetRows.filter((r) => isDateThisWeek(r.adminDate, r.adminTime)).length, [sheetRows]);
   const sheetMonthTotal = useMemo(() => sheetRows.filter((r) => isDateThisMonth(r.adminDate, r.adminTime)).length, [sheetRows]);
 
@@ -550,6 +565,11 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
       timeframe: sheetTimeframe,
       lastPackedTimeStr,
       customDate: new Date(),
+      breakdown: {
+        total: { shopee: sheetShopeeCount, tokped: sheetTokpedCount },
+        packed: { shopee: sheetShopeePackedCount, tokped: sheetTokpedPackedCount },
+        pending: { shopee: sheetShopeePendingCount, tokped: sheetTokpedPendingCount },
+      },
     });
 
     try {
@@ -1167,6 +1187,28 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             </button>
             <button
               type="button"
+              id="btn-timeframe-yesterday"
+              onClick={() => setSheetTimeframe('yesterday')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                sheetTimeframe === 'yesterday'
+                  ? 'bg-emerald-500 text-slate-950 font-black shadow-xs ring-1 ring-emerald-300'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/70'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Hari Kemarin</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  sheetTimeframe === 'yesterday'
+                    ? 'bg-emerald-900/30 text-slate-950'
+                    : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                {sheetYesterdayTotal}
+              </span>
+            </button>
+            <button
+              type="button"
               id="btn-timeframe-week"
               onClick={() => setSheetTimeframe('week')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
@@ -1257,6 +1299,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
               <span>Menampilkan:</span>
               <span className="font-extrabold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-500/30">
                 {sheetTimeframe === 'today' && 'Data Harian (Hari Ini)'}
+                {sheetTimeframe === 'yesterday' && 'Data Hari Kemarin'}
                 {sheetTimeframe === 'week' && 'Data Mingguan (Minggu Ini)'}
                 {sheetTimeframe === 'month' && 'Data Bulanan (Bulan Ini)'}
                 {sheetTimeframe === 'all' && 'Semua Riwayat Data'}
@@ -1392,6 +1435,8 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                 <Layers className="w-3.5 h-3.5 text-indigo-400" />
                 {sheetTimeframe === 'today'
                   ? 'Total Harian'
+                  : sheetTimeframe === 'yesterday'
+                  ? 'Total Kemarin'
                   : sheetTimeframe === 'week'
                   ? 'Total Mingguan'
                   : sheetTimeframe === 'month'
@@ -1401,6 +1446,8 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
               <span className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded-full text-[10px] font-bold">
                 {sheetTimeframe === 'today'
                   ? 'Hari Ini'
+                  : sheetTimeframe === 'yesterday'
+                  ? 'Kemarin'
                   : sheetTimeframe === 'week'
                   ? 'Minggu Ini'
                   : sheetTimeframe === 'month'
@@ -1517,8 +1564,8 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
         )}
       </div>
 
-      {/* 4 Summary Metric Cards (Sesi Scan Lokal) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      {/* Summary Metric Cards (Sesi Scan Lokal) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         {/* Total Nota */}
         <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-slate-100">
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
@@ -1552,82 +1599,6 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900">
               {pendingCount === 0 ? 'Semua Beres' : 'Menunggu Packing'}
             </span>
-          </div>
-        </div>
-
-        {/* Nota Tertunda (> threshold) - High Attention Card */}
-        <div
-          onClick={() => {
-            if (delayedCount > 0) setStatusFilter('overdue');
-          }}
-          className={`p-4 sm:p-5 rounded-2xl shadow-xs relative overflow-hidden transition-all ${
-            delayedCount > 0
-              ? 'bg-rose-50/90 border-2 border-rose-300 cursor-pointer hover:bg-rose-100/80'
-              : 'bg-slate-50/80 border border-slate-200'
-          }`}
-          title={delayedCount > 0 ? 'Klik untuk memfilter nota tertunda' : undefined}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <span
-              className={`text-xs font-bold uppercase tracking-wider ${
-                delayedCount > 0 ? 'text-rose-900' : 'text-slate-500'
-              }`}
-            >
-              Tertunda (&gt;{formatThresholdLabel(currentThreshold)})
-            </span>
-            {delayedCount > 0 && (
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
-              </span>
-            )}
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span
-              className={`text-2xl sm:text-3xl font-black leading-none ${
-                delayedCount > 0 ? 'text-rose-700' : 'text-slate-600'
-              }`}
-            >
-              {delayedCount}
-            </span>
-            <span
-              className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                delayedCount > 0
-                  ? 'bg-rose-200/90 text-rose-900 animate-pulse'
-                  : 'bg-slate-200/70 text-slate-600'
-              }`}
-            >
-              {delayedCount > 0 ? '⚠️ Butuh Perhatian' : '✓ Tepat Waktu'}
-            </span>
-          </div>
-          {delayedCount > 0 && maxDelayMinutes > 0 && (
-            <div className="text-[10px] text-rose-700 font-semibold mt-1 truncate">
-              Terlama: +{formatElapsedDuration(maxDelayMinutes)}
-            </div>
-          )}
-        </div>
-
-        {/* Sudah Packing (Selesai) with Progress Bar */}
-        <div className="bg-emerald-50/70 border border-emerald-200 p-4 sm:p-5 rounded-2xl shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
-              Sudah Dipacking
-            </span>
-            <span className="text-xs font-extrabold text-emerald-800">{progressPercent}%</span>
-          </div>
-          <div className="flex items-baseline justify-between mb-2">
-            <span className="text-2xl sm:text-3xl font-black text-emerald-800 leading-none">
-              {packedCount}
-            </span>
-            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900">
-              {progressPercent}% Selesai
-            </span>
-          </div>
-          <div className="w-full bg-emerald-100/70 h-2 rounded-full overflow-hidden">
-            <div
-              className="bg-emerald-500 h-full rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progressPercent}%` }}
-            />
           </div>
         </div>
       </div>
