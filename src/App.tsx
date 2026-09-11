@@ -10,6 +10,7 @@ import { ConfirmResetModal } from './components/ConfirmResetModal';
 import { HistoryModal } from './components/HistoryModal';
 import { SettingsModal } from './components/SettingsModal';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
+import { GoogleSessionModal } from './components/GoogleSessionModal';
 import { ConfirmWorkspaceActionModal } from './components/ConfirmWorkspaceActionModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
 import { ToastContainer } from './components/Toast';
@@ -84,6 +85,7 @@ export default function App() {
     };
   });
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState<boolean>(false);
+  const [isGoogleSessionModalOpen, setIsGoogleSessionModalOpen] = useState<boolean>(false);
 
   // Destructive/Mutating Action Confirmation Modal
   const [workspaceConfirmModal, setWorkspaceConfirmModal] = useState<{
@@ -432,6 +434,27 @@ export default function App() {
   };
 
   const handleGoogleSignIn = handleGoogleSessionAction;
+
+  // Handle Switch Google Account
+  const handleSwitchGoogleAccount = async () => {
+    setIsRenewingSession(true);
+    try {
+      showToast('Membuka pilihan akun Google...', 'info');
+      const result = await googleSignIn(true);
+      if (result) {
+        setUser(result.user);
+        setAccessToken(result.accessToken);
+        showToast(`Berhasil masuk sebagai ${result.user.email || result.user.displayName}!`, 'success');
+      }
+    } catch (err: any) {
+      if (err?.code !== 'auth/popup-closed-by-user') {
+        console.error('Switch account error:', err);
+        showToast(err?.message || 'Gagal mengganti akun Google.', 'error');
+      }
+    } finally {
+      setIsRenewingSession(false);
+    }
+  };
 
   // Handle Google Sign Out
   const handleGoogleSignOut = async () => {
@@ -1402,8 +1425,9 @@ export default function App() {
           user={user}
           activeSpreadsheet={activeSpreadsheet}
           onOpenGoogleDriveModal={() => setIsGoogleDriveModalOpen(true)}
-          onGoogleSignIn={handleGoogleSignIn}
-          onRenewSession={handleGoogleSessionAction}
+          onOpenSessionModal={() => setIsGoogleSessionModalOpen(true)}
+          onGoogleSignIn={() => setIsGoogleSessionModalOpen(true)}
+          onRenewSession={() => setIsGoogleSessionModalOpen(true)}
           isRenewingSession={isRenewingSession}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onShareWhatsApp={handleShareWhatsApp}
@@ -1457,8 +1481,11 @@ export default function App() {
             showToast={showToast}
             accessToken={accessToken}
             userEmail={user?.email}
-            onLoginGoogle={handleGoogleSignIn}
-            onTokenExpired={() => setAccessToken(null)}
+            onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
+            onTokenExpired={() => {
+              setAccessToken(null);
+              setIsGoogleSessionModalOpen(true);
+            }}
             targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
             targetSheetTab={TARGET_PACKING_SHEET_TAB}
             lastSyncTimestamp={lastPackingSyncTime}
@@ -1483,8 +1510,11 @@ export default function App() {
             showToast={showToast}
             accessToken={accessToken}
             userEmail={user?.email}
-            onLoginGoogle={handleGoogleSignIn}
-            onTokenExpired={() => setAccessToken(null)}
+            onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
+            onTokenExpired={() => {
+              setAccessToken(null);
+              setIsGoogleSessionModalOpen(true);
+            }}
             targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
             targetSheetTab={TARGET_NOTA_SHEET_TAB}
             lastSyncTimestamp={lastNotaSyncTime}
@@ -1516,6 +1546,21 @@ export default function App() {
           activeSpreadsheet?.url ||
           `https://docs.google.com/spreadsheets/d/${TARGET_PACKING_SPREADSHEET_ID}/edit`
         }
+      />
+
+      {/* Google Session & Authentication Pop-up Modal */}
+      <GoogleSessionModal
+        isOpen={isGoogleSessionModalOpen}
+        onClose={() => setIsGoogleSessionModalOpen(false)}
+        user={user}
+        accessToken={accessToken}
+        isRenewingSession={isRenewingSession}
+        onRenewSession={handleGoogleSessionAction}
+        onSwitchAccount={handleSwitchGoogleAccount}
+        onSignOut={handleGoogleSignOut}
+        onOpenDriveManager={() => setIsGoogleDriveModalOpen(true)}
+        activeSpreadsheet={activeSpreadsheet}
+        showToast={showToast}
       />
 
       {/* Google Drive & Sheets Manager Modal */}

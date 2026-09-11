@@ -155,12 +155,18 @@ export const isAuthExpiredError = (err: any): boolean => {
   );
 };
 
-// Create a GoogleAuthProvider with Workspace scopes and optional login hint
-const createProvider = (emailHint?: string | null) => {
+// Create a GoogleAuthProvider with Workspace scopes and optional login hint or select_account prompt
+const createProvider = (emailHint?: string | null, promptSelectAccount: boolean = false) => {
   const provider = new GoogleAuthProvider();
   WORKSPACE_SCOPES.forEach((scope) => provider.addScope(scope));
-  if (emailHint) {
-    provider.setCustomParameters({ login_hint: emailHint });
+  const customParams: Record<string, string> = {};
+  if (promptSelectAccount) {
+    customParams.prompt = 'select_account';
+  } else if (emailHint) {
+    customParams.login_hint = emailHint;
+  }
+  if (Object.keys(customParams).length > 0) {
+    provider.setCustomParameters(customParams);
   }
   return provider;
 };
@@ -191,15 +197,17 @@ export const initAuth = (
 };
 
 // Sign in with Google with Workspace scopes
-export const googleSignIn = async (): Promise<{
+export const googleSignIn = async (
+  promptSelectAccount: boolean = false
+): Promise<{
   user: User;
   accessToken: string;
 } | null> => {
   try {
     isSigningIn = true;
     const cachedProfile = getCachedUserProfile();
-    const emailHint = auth.currentUser?.email || cachedProfile?.email;
-    const provider = createProvider(emailHint);
+    const emailHint = promptSelectAccount ? null : (auth.currentUser?.email || cachedProfile?.email);
+    const provider = createProvider(emailHint, promptSelectAccount);
 
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);

@@ -27,6 +27,7 @@ interface HeaderProps {
   user: User | null;
   activeSpreadsheet: ActiveSpreadsheet | null;
   onOpenGoogleDriveModal: () => void;
+  onOpenSessionModal?: () => void;
   onGoogleSignIn: () => void;
   onRenewSession?: () => void;
   isRenewingSession?: boolean;
@@ -46,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   user,
   activeSpreadsheet,
   onOpenGoogleDriveModal,
+  onOpenSessionModal,
   onGoogleSignIn,
   onRenewSession,
   isRenewingSession = false,
@@ -57,6 +59,16 @@ export const Header: React.FC<HeaderProps> = ({
     appData.counts.JNT +
     appData.counts.SPX +
     appData.counts.IDX;
+
+  const handleOpenAuthPopup = () => {
+    if (onOpenSessionModal) {
+      onOpenSessionModal();
+    } else if (onRenewSession) {
+      onRenewSession();
+    } else {
+      onGoogleSignIn();
+    }
+  };
 
   return (
     <header
@@ -84,16 +96,16 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-          {/* Single Unified 1-Click Google Session & Login Button */}
+          {/* Pop-up Trigger Google Session & Login Button */}
           {user ? (
             <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200 shadow-2xs">
               <button
                 type="button"
                 id="btn-google-renew-session"
-                onClick={onRenewSession || onGoogleSignIn}
+                onClick={handleOpenAuthPopup}
                 disabled={isRenewingSession}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-900 border border-emerald-200/80 transition-all text-xs font-black shadow-2xs group"
-                title={`Akun: ${user.email || user.displayName || 'Google User'}. Klik 1x untuk perbarui sesi otomatis`}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-900 border border-emerald-200/80 transition-all text-xs font-black shadow-2xs group cursor-pointer"
+                title={`Akun: ${user.email || user.displayName || 'Google User'}. Klik untuk buka pop-up kelola & perbarui sesi Google`}
               >
                 {isRenewingSession ? (
                   <RefreshCw className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
@@ -119,7 +131,7 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 id="btn-google-drive-connected"
                 onClick={onOpenGoogleDriveModal}
-                className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-white rounded-lg transition-all"
+                className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-white rounded-lg transition-all cursor-pointer"
                 title={`Kelola Google Drive & Spreadsheet (${activeSpreadsheet?.name || 'Default'})`}
               >
                 <HardDrive className="w-4 h-4 text-emerald-600" />
@@ -129,10 +141,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               id="btn-google-signin-header"
-              onClick={onRenewSession || onGoogleSignIn}
+              onClick={handleOpenAuthPopup}
               disabled={isRenewingSession}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-emerald-400/80 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 font-black text-xs transition-all shadow-xs"
-              title="1-Klik Masuk / Perbarui Sesi Google"
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-emerald-400/80 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 font-black text-xs transition-all shadow-xs cursor-pointer"
+              title="Buka pop-up masuk & kelola Sesi Google"
             >
               {isRenewingSession ? (
                 <RefreshCw className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
