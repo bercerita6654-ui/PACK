@@ -3,7 +3,7 @@ export type DeliveryMethod = 'pickup' | 'drop off';
 
 export type PlatformType = 'Shopee' | 'Tokopedia/TikTok' | 'Lainnya';
 
-export type ActiveTab = 'rekap' | 'packing' | 'nota' | 'sheet_history';
+export type ActiveTab = 'beranda' | 'nota' | 'packing' | 'sheet_history' | 'rekap';
 
 export interface PackedOrder {
   id: string;

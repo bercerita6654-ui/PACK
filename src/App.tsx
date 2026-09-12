@@ -12,6 +12,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { GoogleSessionModal } from './components/GoogleSessionModal';
 import { GoogleSheetHistorySection } from './components/GoogleSheetHistorySection';
+import { BerandaSection } from './components/BerandaSection';
 import { ConfirmWorkspaceActionModal } from './components/ConfirmWorkspaceActionModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
 import { ToastContainer } from './components/Toast';
@@ -72,7 +73,15 @@ export default function App() {
       return false;
     }
   });
-  const [activeTab, setActiveTab] = useState<ActiveTab>('nota');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('beranda');
+  const [sheetHistoryFilter, setSheetHistoryFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
+
+  const handleNavigateFromBeranda = (tab: ActiveTab, filter?: 'all' | 'pending' | 'overdue' | 'packed') => {
+    if (filter) {
+      setSheetHistoryFilter(filter);
+    }
+    setActiveTab(tab);
+  };
 
   const handleToggleShowRekapTab = (show: boolean) => {
     setShowRekapTab(show);
@@ -82,7 +91,7 @@ export default function App() {
       console.error('Error saving showRekapTab:', e);
     }
     if (!show && activeTab === 'rekap') {
-      setActiveTab('nota');
+      setActiveTab('beranda');
     }
   };
 
@@ -1574,6 +1583,31 @@ export default function App() {
           </>
         )}
 
+        {activeTab === 'beranda' && (
+          /* Beranda Dashboard Operasional Section */
+          <BerandaSection
+            accessToken={accessToken}
+            userEmail={user?.email}
+            onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
+            onTokenExpired={() => {
+              setAccessToken(null);
+              setIsGoogleSessionModalOpen(true);
+            }}
+            targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
+            targetNotaTab={TARGET_NOTA_SHEET_TAB}
+            targetPackingTab={TARGET_PACKING_SHEET_TAB}
+            lastSyncTimestamp={Math.max(lastPackingSyncTime, lastNotaSyncTime)}
+            delayThreshold={delayThreshold}
+            showToast={showToast}
+            onNavigateToTab={handleNavigateFromBeranda}
+            packedOrders={packedOrders}
+            localNotas={processedNotas}
+            activeSpreadsheet={activeSpreadsheet}
+            showRekapTab={showRekapTab}
+            rekapTotalCount={appData.counts.JNE + appData.counts.JNT + appData.counts.SPX + appData.counts.IDX}
+          />
+        )}
+
         {activeTab === 'packing' && (
           /* Paket Packing Scanner Section */
           <PackingSection
@@ -1599,6 +1633,7 @@ export default function App() {
             delayThreshold={delayThreshold}
             onNavigateToNotas={() => setActiveTab('nota')}
             onNavigateToSheetHistory={() => setActiveTab('sheet_history')}
+            onNavigateToBeranda={() => setActiveTab('beranda')}
           />
         )}
 
@@ -1627,6 +1662,7 @@ export default function App() {
             lastSyncTimestamp={lastNotaSyncTime}
             onNavigateToPacking={() => setActiveTab('packing')}
             onNavigateToSheetHistory={() => setActiveTab('sheet_history')}
+            onNavigateToBeranda={() => setActiveTab('beranda')}
             delayThreshold={delayThreshold}
             onDelayThresholdChange={handleUpdateDelayThreshold}
           />
@@ -1652,6 +1688,7 @@ export default function App() {
             activeSpreadsheet={activeSpreadsheet}
             csvUrl={csvUrl}
             showRekapTab={showRekapTab}
+            initialFilter={sheetHistoryFilter}
           />
         )}
       </div>

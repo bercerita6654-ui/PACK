@@ -35,6 +35,7 @@ interface GoogleSheetHistorySectionProps {
   csvUrl: string;
   initialSubTab?: 'nota' | 'packing' | 'rekap';
   showRekapTab?: boolean;
+  initialFilter?: 'all' | 'pending' | 'overdue' | 'packed';
 }
 
 export const GoogleSheetHistorySection: React.FC<GoogleSheetHistorySectionProps> = ({
@@ -53,6 +54,7 @@ export const GoogleSheetHistorySection: React.FC<GoogleSheetHistorySectionProps>
   csvUrl,
   initialSubTab = 'nota',
   showRekapTab = false,
+  initialFilter,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'nota' | 'packing' | 'rekap'>(
     initialSubTab === 'rekap' && !showRekapTab ? 'nota' : initialSubTab
@@ -176,6 +178,7 @@ export const GoogleSheetHistorySection: React.FC<GoogleSheetHistorySectionProps>
             showToast={showToast}
             packedOrders={packedOrders}
             localNotas={localNotas}
+            selectedStatusFilter={initialFilter}
           />
         )}
 

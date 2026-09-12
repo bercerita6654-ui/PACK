@@ -12,6 +12,7 @@ import {
   FileText,
   RefreshCw,
   LogIn,
+  LayoutDashboard,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { AppState, ActiveTab, ActiveSpreadsheet } from '../types';
@@ -188,6 +189,36 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Menu Navigation Tabs */}
       <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 overflow-x-auto">
         <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+          <button
+            type="button"
+            id="nav-tab-beranda"
+            onClick={() => onTabChange('beranda')}
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'beranda'
+                ? 'bg-white text-indigo-900 shadow-xs ring-1 ring-indigo-200/80'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4 text-indigo-600" />
+            <span>Beranda</span>
+            {delayedNotaCount > 0 ? (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-2xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping inline-block" />
+                <span>{delayedNotaCount} Cek!</span>
+              </span>
+            ) : (
+              <span
+                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                  activeTab === 'beranda'
+                    ? 'bg-indigo-100 text-indigo-900'
+                    : 'bg-slate-200/70 text-slate-600'
+                }`}
+              >
+                Dashboard
+              </span>
+            )}
+          </button>
+
           <button
             type="button"
             id="nav-tab-nota"
