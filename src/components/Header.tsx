@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import {
   Calendar,
   Package,
@@ -204,56 +205,74 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             id="nav-tab-beranda"
             onClick={() => onTabChange('beranda')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+            className={`relative flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === 'beranda'
-                ? 'bg-white text-indigo-900 shadow-xs ring-1 ring-indigo-200/80'
+                ? 'text-indigo-900'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <LayoutDashboard className="w-4 h-4 text-indigo-600" />
-            <span>Beranda</span>
-            {delayedNotaCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-2xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping inline-block" />
-                <span>{delayedNotaCount} Cek!</span>
-              </span>
+            {activeTab === 'beranda' && (
+              <motion.div
+                layoutId="activeHeaderTab"
+                className="absolute inset-0 bg-white rounded-lg shadow-xs ring-1 ring-indigo-200/80 -z-0"
+                transition={{ type: 'spring', bounce: 0.15, duration: 0.35 }}
+              />
             )}
+            <span className="relative z-10 flex items-center gap-2">
+              <LayoutDashboard className="w-4 h-4 text-indigo-600" />
+              <span>Beranda</span>
+              {delayedNotaCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping inline-block" />
+                  <span>{delayedNotaCount} Cek!</span>
+                </span>
+              )}
+            </span>
           </button>
 
           <button
             type="button"
             id="nav-tab-nota"
             onClick={() => onTabChange('nota')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+            className={`relative flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === 'nota'
-                ? 'bg-white text-amber-900 shadow-xs ring-1 ring-amber-200/80'
+                ? 'text-amber-900'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <FileText className="w-4 h-4 text-amber-600" />
-            <span>Scan Nota (Belum Packing)</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
-                delayedNotaCount > 0
-                  ? 'bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs'
-                  : activeTab === 'nota'
-                  ? 'bg-amber-100 text-amber-900'
-                  : 'bg-slate-200/70 text-slate-600'
-              }`}
-            >
-              {delayedNotaCount > 0 ? (
-                <>
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping inline-block" />
-                  <span>{delayedNotaCount} Tertunda!</span>
-                </>
-              ) : pendingNotaCount > 0 ? (
-                <>
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block" />
-                  <span>{pendingNotaCount} Pending</span>
-                </>
-              ) : (
-                <span>{notaCount}</span>
-              )}
+            {activeTab === 'nota' && (
+              <motion.div
+                layoutId="activeHeaderTab"
+                className="absolute inset-0 bg-white rounded-lg shadow-xs ring-1 ring-amber-200/80 -z-0"
+                transition={{ type: 'spring', bounce: 0.15, duration: 0.35 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-amber-600" />
+              <span>Scan Nota (Belum Packing)</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
+                  delayedNotaCount > 0
+                    ? 'bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs'
+                    : activeTab === 'nota'
+                    ? 'bg-amber-100 text-amber-900'
+                    : 'bg-slate-200/70 text-slate-600'
+                }`}
+              >
+                {delayedNotaCount > 0 ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping inline-block" />
+                    <span>{delayedNotaCount} Tertunda!</span>
+                  </>
+                ) : pendingNotaCount > 0 ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block" />
+                    <span>{pendingNotaCount} Pending</span>
+                  </>
+                ) : (
+                  <span>{notaCount}</span>
+                )}
+              </span>
             </span>
           </button>
 
@@ -261,22 +280,31 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             id="nav-tab-packing"
             onClick={() => onTabChange('packing')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+            className={`relative flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === 'packing'
-                ? 'bg-white text-emerald-800 shadow-xs ring-1 ring-emerald-200/80'
+                ? 'text-emerald-800'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <ScanBarcode className="w-4 h-4 text-emerald-600" />
-            <span>Scan Nota (Sudah Packing)</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
-                activeTab === 'packing'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-slate-200/70 text-slate-600'
-              }`}
-            >
-              {packingCount}
+            {activeTab === 'packing' && (
+              <motion.div
+                layoutId="activeHeaderTab"
+                className="absolute inset-0 bg-white rounded-lg shadow-xs ring-1 ring-emerald-200/80 -z-0"
+                transition={{ type: 'spring', bounce: 0.15, duration: 0.35 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <ScanBarcode className="w-4 h-4 text-emerald-600" />
+              <span>Scan Nota (Sudah Packing)</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                  activeTab === 'packing'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-200/70 text-slate-600'
+                }`}
+              >
+                {packingCount}
+              </span>
             </span>
           </button>
 
@@ -285,22 +313,31 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               id="nav-tab-rekap"
               onClick={() => onTabChange('rekap')}
-              className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+              className={`relative flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer ${
                 activeTab === 'rekap'
-                  ? 'bg-white text-indigo-700 shadow-xs'
+                  ? 'text-indigo-700'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Truck className="w-4 h-4 text-indigo-600" />
-              <span>Rekap Kiriman Reguler</span>
-              <span
-                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
-                  activeTab === 'rekap'
-                    ? 'bg-indigo-100 text-indigo-800'
-                    : 'bg-slate-200/70 text-slate-600'
-                }`}
-              >
-                {total}
+              {activeTab === 'rekap' && (
+                <motion.div
+                  layoutId="activeHeaderTab"
+                  className="absolute inset-0 bg-white rounded-lg shadow-xs -z-0"
+                  transition={{ type: 'spring', bounce: 0.15, duration: 0.35 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <Truck className="w-4 h-4 text-indigo-600" />
+                <span>Rekap Kiriman Reguler</span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                    activeTab === 'rekap'
+                      ? 'bg-indigo-100 text-indigo-800'
+                      : 'bg-slate-200/70 text-slate-600'
+                  }`}
+                >
+                  {total}
+                </span>
               </span>
             </button>
           )}
@@ -309,23 +346,32 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             id="nav-tab-sheet-history"
             onClick={() => onTabChange('sheet_history')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+            className={`relative flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === 'sheet_history'
-                ? 'bg-white text-emerald-900 shadow-xs ring-1 ring-emerald-200/80'
+                ? 'text-emerald-900'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Riwayat Google Sheet</span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
-                activeTab === 'sheet_history'
-                  ? 'bg-emerald-100 text-emerald-900'
-                  : 'bg-slate-200/70 text-slate-600'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-              <span>Cloud</span>
+            {activeTab === 'sheet_history' && (
+              <motion.div
+                layoutId="activeHeaderTab"
+                className="absolute inset-0 bg-white rounded-lg shadow-xs ring-1 ring-emerald-200/80 -z-0"
+                transition={{ type: 'spring', bounce: 0.15, duration: 0.35 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Riwayat Google Sheet</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
+                  activeTab === 'sheet_history'
+                    ? 'bg-emerald-100 text-emerald-900'
+                    : 'bg-slate-200/70 text-slate-600'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                <span>Cloud</span>
+              </span>
             </span>
           </button>
         </div>

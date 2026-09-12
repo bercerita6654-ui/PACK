@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Header } from './components/Header';
 import { ExpeditionCards } from './components/ExpeditionCards';
 import { QuickAddSection } from './components/QuickAddSection';
@@ -1557,137 +1558,179 @@ export default function App() {
           onExportCSV={handleExportCSV}
         />
 
-        {showRekapTab && activeTab === 'rekap' && (
-          <>
-            {/* 4 Expedition Summary Cards */}
-            <ExpeditionCards counts={appData.counts} />
+        {/* Animated Tab Content Switcher */}
+        <AnimatePresence mode="wait">
+          {showRekapTab && activeTab === 'rekap' && (
+            <motion.div
+              key="rekap"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+              className="space-y-6 sm:space-y-8"
+            >
+              {/* 4 Expedition Summary Cards */}
+              <ExpeditionCards counts={appData.counts} />
 
-            {/* Quick Add Section */}
-            <QuickAddSection
-              onAddPackage={handleAddPackage}
-              onSubtractPackage={handleSubtractPackage}
-            />
+              {/* Quick Add Section */}
+              <QuickAddSection
+                onAddPackage={handleAddPackage}
+                onSubtractPackage={handleSubtractPackage}
+              />
 
-            {/* Logs Table (Left 2 cols) and Chart (Right 1 col) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-start">
-              <div className="lg:col-span-2">
-                <LogTable
-                  logs={allLogs}
-                  todayLogsCount={appData.logs.length}
-                  currentDate={appData.date}
-                  isSyncing={isSyncing || isWorkspaceSubmitting}
-                  onRemoveLog={handleRemoveLog}
-                  onPromptReset={() => setIsResetModalOpen(true)}
-                  onSyncGoogleSheet={handleSyncToGoogleSheet}
-                  onOpenHistory={() => setIsHistoryModalOpen(true)}
-                  showToast={showToast}
-                />
+              {/* Logs Table (Left 2 cols) and Chart (Right 1 col) */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-start">
+                <div className="lg:col-span-2">
+                  <LogTable
+                    logs={allLogs}
+                    todayLogsCount={appData.logs.length}
+                    currentDate={appData.date}
+                    isSyncing={isSyncing || isWorkspaceSubmitting}
+                    onRemoveLog={handleRemoveLog}
+                    onPromptReset={() => setIsResetModalOpen(true)}
+                    onSyncGoogleSheet={handleSyncToGoogleSheet}
+                    onOpenHistory={() => setIsHistoryModalOpen(true)}
+                    showToast={showToast}
+                  />
+                </div>
+
+                <div className="lg:col-span-1">
+                  <ExpeditionChart counts={appData.counts} />
+                </div>
               </div>
+            </motion.div>
+          )}
 
-              <div className="lg:col-span-1">
-                <ExpeditionChart counts={appData.counts} />
-              </div>
-            </div>
-          </>
-        )}
+          {activeTab === 'beranda' && (
+            <motion.div
+              key="beranda"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+            >
+              {/* Beranda Dashboard Operasional Section */}
+              <BerandaSection
+                accessToken={accessToken}
+                userEmail={user?.email}
+                onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
+                onTokenExpired={handleTokenExpired}
+                targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
+                targetNotaTab={TARGET_NOTA_SHEET_TAB}
+                targetPackingTab={TARGET_PACKING_SHEET_TAB}
+                lastSyncTimestamp={Math.max(lastPackingSyncTime, lastNotaSyncTime)}
+                delayThreshold={delayThreshold}
+                showToast={showToast}
+                onNavigateToTab={handleNavigateFromBeranda}
+                packedOrders={packedOrders}
+                localNotas={processedNotas}
+                activeSpreadsheet={activeSpreadsheet}
+                showRekapTab={showRekapTab}
+                rekapTotalCount={appData.counts.JNE + appData.counts.JNT + appData.counts.SPX + appData.counts.IDX}
+              />
+            </motion.div>
+          )}
 
-        {activeTab === 'beranda' && (
-          /* Beranda Dashboard Operasional Section */
-          <BerandaSection
-            accessToken={accessToken}
-            userEmail={user?.email}
-            onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
-            onTokenExpired={handleTokenExpired}
-            targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
-            targetNotaTab={TARGET_NOTA_SHEET_TAB}
-            targetPackingTab={TARGET_PACKING_SHEET_TAB}
-            lastSyncTimestamp={Math.max(lastPackingSyncTime, lastNotaSyncTime)}
-            delayThreshold={delayThreshold}
-            showToast={showToast}
-            onNavigateToTab={handleNavigateFromBeranda}
-            packedOrders={packedOrders}
-            localNotas={processedNotas}
-            activeSpreadsheet={activeSpreadsheet}
-            showRekapTab={showRekapTab}
-            rekapTotalCount={appData.counts.JNE + appData.counts.JNT + appData.counts.SPX + appData.counts.IDX}
-          />
-        )}
+          {activeTab === 'packing' && (
+            <motion.div
+              key="packing"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+            >
+              {/* Paket Packing Scanner Section */}
+              <PackingSection
+                orders={packedOrders}
+                onAddOrder={handleAddPackedOrder}
+                onAddOrdersBatch={handleAddPackedOrdersBatch}
+                onRemoveOrder={handleRemovePackedOrder}
+                onClearOrders={handleClearPackedOrders}
+                onSyncGoogleSheet={handleSyncPackingToGoogleSheet}
+                isSyncing={isWorkspaceSubmitting}
+                showToast={showToast}
+                accessToken={accessToken}
+                userEmail={user?.email}
+                onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
+                onTokenExpired={handleTokenExpired}
+                targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
+                targetSheetTab={TARGET_PACKING_SHEET_TAB}
+                lastSyncTimestamp={lastPackingSyncTime}
+                processedNotas={processedNotas}
+                delayThreshold={delayThreshold}
+                onNavigateToNotas={() => setActiveTab('nota')}
+                onNavigateToSheetHistory={() => setActiveTab('sheet_history')}
+                onNavigateToBeranda={() => setActiveTab('beranda')}
+              />
+            </motion.div>
+          )}
 
-        {activeTab === 'packing' && (
-          /* Paket Packing Scanner Section */
-          <PackingSection
-            orders={packedOrders}
-            onAddOrder={handleAddPackedOrder}
-            onAddOrdersBatch={handleAddPackedOrdersBatch}
-            onRemoveOrder={handleRemovePackedOrder}
-            onClearOrders={handleClearPackedOrders}
-            onSyncGoogleSheet={handleSyncPackingToGoogleSheet}
-            isSyncing={isWorkspaceSubmitting}
-            showToast={showToast}
-            accessToken={accessToken}
-            userEmail={user?.email}
-            onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
-            onTokenExpired={handleTokenExpired}
-            targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
-            targetSheetTab={TARGET_PACKING_SHEET_TAB}
-            lastSyncTimestamp={lastPackingSyncTime}
-            processedNotas={processedNotas}
-            delayThreshold={delayThreshold}
-            onNavigateToNotas={() => setActiveTab('nota')}
-            onNavigateToSheetHistory={() => setActiveTab('sheet_history')}
-            onNavigateToBeranda={() => setActiveTab('beranda')}
-          />
-        )}
+          {activeTab === 'nota' && (
+            <motion.div
+              key="nota"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+            >
+              {/* Scan Nota Diproses Admin Section */}
+              <ProcessedNotaSection
+                notas={processedNotas}
+                packedOrders={packedOrders}
+                onAddNota={handleAddProcessedNota}
+                onAddNotasBatch={handleAddProcessedNotasBatch}
+                onRemoveNota={handleRemoveProcessedNota}
+                onClearNotas={handleClearProcessedNotas}
+                onTogglePackedStatus={handleToggleNotaPackedStatus}
+                onSyncGoogleSheet={handleSyncNotasToGoogleSheet}
+                isSyncing={isWorkspaceSubmitting}
+                showToast={showToast}
+                accessToken={accessToken}
+                userEmail={user?.email}
+                onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
+                onTokenExpired={handleTokenExpired}
+                targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
+                targetSheetTab={TARGET_NOTA_SHEET_TAB}
+                lastSyncTimestamp={lastNotaSyncTime}
+                onNavigateToPacking={() => setActiveTab('packing')}
+                onNavigateToSheetHistory={() => setActiveTab('sheet_history')}
+                onNavigateToBeranda={() => setActiveTab('beranda')}
+                delayThreshold={delayThreshold}
+                onDelayThresholdChange={handleUpdateDelayThreshold}
+              />
+            </motion.div>
+          )}
 
-        {activeTab === 'nota' && (
-          /* Scan Nota Diproses Admin Section */
-          <ProcessedNotaSection
-            notas={processedNotas}
-            packedOrders={packedOrders}
-            onAddNota={handleAddProcessedNota}
-            onAddNotasBatch={handleAddProcessedNotasBatch}
-            onRemoveNota={handleRemoveProcessedNota}
-            onClearNotas={handleClearProcessedNotas}
-            onTogglePackedStatus={handleToggleNotaPackedStatus}
-            onSyncGoogleSheet={handleSyncNotasToGoogleSheet}
-            isSyncing={isWorkspaceSubmitting}
-            showToast={showToast}
-            accessToken={accessToken}
-            userEmail={user?.email}
-            onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
-            onTokenExpired={handleTokenExpired}
-            targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
-            targetSheetTab={TARGET_NOTA_SHEET_TAB}
-            lastSyncTimestamp={lastNotaSyncTime}
-            onNavigateToPacking={() => setActiveTab('packing')}
-            onNavigateToSheetHistory={() => setActiveTab('sheet_history')}
-            onNavigateToBeranda={() => setActiveTab('beranda')}
-            delayThreshold={delayThreshold}
-            onDelayThresholdChange={handleUpdateDelayThreshold}
-          />
-        )}
-
-        {activeTab === 'sheet_history' && (
-          /* Dedicated Google Sheet History Section */
-          <GoogleSheetHistorySection
-            accessToken={accessToken}
-            userEmail={user?.email}
-            onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
-            onTokenExpired={handleTokenExpired}
-            targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
-            targetPackingTab={TARGET_PACKING_SHEET_TAB}
-            targetNotaTab={TARGET_NOTA_SHEET_TAB}
-            lastSyncTimestamp={Math.max(lastPackingSyncTime, lastNotaSyncTime)}
-            showToast={showToast}
-            packedOrders={packedOrders}
-            localNotas={processedNotas}
-            activeSpreadsheet={activeSpreadsheet}
-            csvUrl={csvUrl}
-            showRekapTab={showRekapTab}
-            initialFilter={sheetHistoryFilter}
-            onFilterChange={setSheetHistoryFilter}
-          />
-        )}
+          {activeTab === 'sheet_history' && (
+            <motion.div
+              key="sheet_history"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+            >
+              {/* Dedicated Google Sheet History Section */}
+              <GoogleSheetHistorySection
+                accessToken={accessToken}
+                userEmail={user?.email}
+                onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
+                onTokenExpired={handleTokenExpired}
+                targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
+                targetPackingTab={TARGET_PACKING_SHEET_TAB}
+                targetNotaTab={TARGET_NOTA_SHEET_TAB}
+                lastSyncTimestamp={Math.max(lastPackingSyncTime, lastNotaSyncTime)}
+                showToast={showToast}
+                packedOrders={packedOrders}
+                localNotas={processedNotas}
+                activeSpreadsheet={activeSpreadsheet}
+                csvUrl={csvUrl}
+                showRekapTab={showRekapTab}
+                initialFilter={sheetHistoryFilter}
+                onFilterChange={setSheetHistoryFilter}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Google Workspace Action Confirmation Modal */}

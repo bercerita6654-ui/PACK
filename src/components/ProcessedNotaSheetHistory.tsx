@@ -820,7 +820,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
 
       {/* Summary Cards (Only shown if standalone / not controlled by top dashboard) */}
       {!isControlled && (
-        <div className="p-4 sm:p-5 bg-slate-50/70 border-b border-slate-200">
+        <div className="hidden p-4 sm:p-5 bg-slate-50/70 border-b border-slate-200">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {/* Total di Sheet */}
             <div
