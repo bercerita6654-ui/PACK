@@ -9,17 +9,11 @@ import {
   Check,
   AlertCircle,
   AlertTriangle,
-  LogIn,
   Filter,
   Calendar,
   Layers,
   Info,
   ArrowRight,
-  FileText,
-  ScanBarcode,
-  Truck,
-  Sparkles,
-  ChevronRight,
 } from 'lucide-react';
 import {
   PlatformType,
@@ -543,62 +537,6 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
   return (
     <section id="section-beranda" className="space-y-6">
-      {/* Top Welcome / Header Banner */}
-      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                  Beranda & Dashboard Operasional
-                </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800">
-                  Ringkasan Eksekutif
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Pusat pemantauan status pesanan, verifikasi scan packing, dan monitoring pendingan Google Sheets.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Top Tools */}
-        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-          <button
-            type="button"
-            id="btn-beranda-refresh-data"
-            onClick={() => {
-              if (!accessToken) {
-                onLoginGoogle();
-              } else {
-                loadSheetData();
-              }
-            }}
-            disabled={sheetLoading}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${sheetLoading ? 'animate-spin' : ''}`} />
-            <span>{sheetLoading ? 'Menyinkron...' : 'Segarkan Google Sheets'}</span>
-          </button>
-
-          <a
-            href={sheetUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 text-xs font-bold transition-all"
-            title="Buka Google Sheets di tab baru"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Buka Google Sheets</span>
-            <ExternalLink className="w-3 h-3 text-emerald-500" />
-          </a>
-        </div>
-      </div>
-
       {/* ========================================================================= */}
       {/* DASHBOARD INFO GOOGLE SHEET: Belum Packing & Sudah Packing (PINDAHAN UTAMA) */}
       {/* ========================================================================= */}
@@ -630,6 +568,38 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
           {/* Action buttons at top dashboard */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Tombol Segarkan Google Sheets */}
+            <button
+              type="button"
+              id="btn-beranda-refresh-data"
+              onClick={() => {
+                if (!accessToken) {
+                  onLoginGoogle();
+                } else {
+                  loadSheetData();
+                }
+              }}
+              disabled={sheetLoading}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-slate-200 hover:text-white disabled:opacity-50 cursor-pointer shadow-xs"
+              title="Segarkan data terbaru dari Google Sheets"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${sheetLoading ? 'animate-spin' : ''}`} />
+              <span>{sheetLoading ? 'Menyinkron...' : 'Segarkan Google Sheets'}</span>
+            </button>
+
+            {/* Buka Google Sheets di Tab Baru */}
+            <a
+              href={sheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs"
+              title="Buka Google Sheets di tab baru"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Buka Google Sheets</span>
+              <ExternalLink className="w-3 h-3 text-slate-400" />
+            </a>
+
             {/* Tombol Salin Report Tunggal */}
             <button
               type="button"
@@ -1042,129 +1012,6 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
           </div>
         </div>
       )}
-
-      {/* Quick Navigation Hub to other sections */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
-          <span>Pintasan Menu Operasional</span>
-        </h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Card 1: Scan Nota (Belum Packing) */}
-          <div
-            id="hub-card-scan-nota"
-            onClick={() => onNavigateToTab('nota')}
-            className="bg-white hover:bg-amber-50/40 p-5 rounded-2xl border border-slate-200/90 hover:border-amber-300 shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-3 bg-amber-50 text-amber-600 rounded-xl group-hover:scale-105 transition-transform">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 text-amber-800">
-                  {localNotas.length} Sesi Aktif
-                </span>
-              </div>
-              <h4 className="font-bold text-slate-900 group-hover:text-amber-900 transition-colors">
-                Scan Nota (Belum Packing)
-              </h4>
-              <p className="text-xs text-slate-500 mt-1">
-                Admin scan nota pesanan yang baru dicetak sebelum barang dikemas oleh tim packing.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-amber-700">
-              <span>Buka Alat Scan Nota</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Card 2: Scan Nota (Sudah Packing) */}
-          <div
-            id="hub-card-scan-packing"
-            onClick={() => onNavigateToTab('packing')}
-            className="bg-white hover:bg-emerald-50/40 p-5 rounded-2xl border border-slate-200/90 hover:border-emerald-300 shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl group-hover:scale-105 transition-transform">
-                  <ScanBarcode className="w-5 h-5" />
-                </div>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800">
-                  {packedOrders.length} Sesi Aktif
-                </span>
-              </div>
-              <h4 className="font-bold text-slate-900 group-hover:text-emerald-900 transition-colors">
-                Scan Nota (Sudah Packing)
-              </h4>
-              <p className="text-xs text-slate-500 mt-1">
-                Tim packing scan barcode nota/resi saat paket telah selesai dibungkus dan siap dikirim.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-700">
-              <span>Buka Alat Scan Packing</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Card 3: Riwayat Google Sheet */}
-          <div
-            id="hub-card-sheet-history"
-            onClick={() => onNavigateToTab('sheet_history')}
-            className="bg-white hover:bg-indigo-50/40 p-5 rounded-2xl border border-slate-200/90 hover:border-indigo-300 shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-105 transition-transform">
-                  <FileSpreadsheet className="w-5 h-5" />
-                </div>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-indigo-100 text-indigo-800">
-                  Cloud Archive
-                </span>
-              </div>
-              <h4 className="font-bold text-slate-900 group-hover:text-indigo-900 transition-colors">
-                Riwayat Google Sheet
-              </h4>
-              <p className="text-xs text-slate-500 mt-1">
-                Tabel lengkap data tersinkronisasi di spreadsheet dengan filter status, tanggal, dan pencarian.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-indigo-700">
-              <span>Buka Tabel Riwayat</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Card 4 (Optional): Rekap Kiriman Reguler */}
-          {showRekapTab && (
-            <div
-              id="hub-card-rekap"
-              onClick={() => onNavigateToTab('rekap')}
-              className="bg-white hover:bg-slate-100/60 p-5 rounded-2xl border border-slate-200/90 hover:border-slate-300 shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="p-3 bg-slate-100 text-slate-700 rounded-xl group-hover:scale-105 transition-transform">
-                    <Truck className="w-5 h-5" />
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-slate-200 text-slate-800">
-                    {rekapTotalCount} Paket Hari Ini
-                  </span>
-                </div>
-                <h4 className="font-bold text-slate-900">
-                  Rekap Kiriman Reguler
-                </h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Pencatatan jumlah paket ekspedisi harian untuk JNE, JNT, SPX, dan IDX.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>Buka Rekap Ekspedisi</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Pop-up List No Pesanan saat Kartu Status Diklik */}
       {activeModalType && (

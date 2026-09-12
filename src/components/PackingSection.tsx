@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   ScanBarcode,
   Search,
@@ -26,14 +26,29 @@ import {
   Barcode,
   Share2,
   FileSpreadsheet,
+  TrendingUp,
+  Percent,
+  Boxes,
+  PackageCheck,
+  RefreshCw,
+  Info,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { PackedOrder, PlatformType, ProcessedNota, ToastItem, ToastOptions } from '../types';
+import {
+  PackedOrder,
+  PlatformType,
+  ProcessedNota,
+  SheetProcessedNotaRow,
+  ToastItem,
+  ToastOptions,
+} from '../types';
 import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
 import { PackingSheetHistory } from './PackingSheetHistory';
+import { fetchCrossReferencedNotasAndPacking } from '../services/googleWorkspace';
 import {
   isNotaDelayed,
+  isDateToday,
   DEFAULT_DELAY_THRESHOLD_MINUTES,
   formatThresholdLabel,
   generatePackingReportText,
@@ -538,43 +553,586 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     showToast('File CSV Paket Packing berhasil diunduh.', 'success');
   };
 
+  // Google Sheet live cross-referenced state for Performa Packing Hari Ini
+  const [sheetRows, setSheetRows] = useState<SheetProcessedNotaRow[]>([]);
+  const [sheetLoading, setSheetLoading] = useState<boolean>(false);
+  const [todayStatsSource, setTodayStatsSource] = useState<'sheet' | 'local'>('sheet');
+  const [sheetResolvedTab, setSheetResolvedTab] = useState<string>('Nota Diproses');
+  const [sheetResolvedPackingTab, setSheetResolvedPackingTab] = useState<string>(targetSheetTab || 'Packing Reg');
+
+  const loadSheetData = useCallback(async () => {
+    if (!accessToken) {
+      setSheetRows([]);
+      return;
+    }
+    setSheetLoading(true);
+    try {
+      const result = await fetchCrossReferencedNotasAndPacking(
+        accessToken,
+        targetSpreadsheetId,
+        'Nota Diproses',
+        targetSheetTab || 'Packing Reg'
+      );
+      setSheetResolvedTab(result.notaTabName);
+      setSheetResolvedPackingTab(result.packingTabName);
+
+      let colOrder = 1;
+      let colPlatform = 2;
+      let colDate = 3;
+      let colTime = 4;
+      let colStatus = 5;
+      let colPackTime = 6;
+      let colNotes = 7;
+
+      if (result.notaHeaders && result.notaHeaders.length > 0) {
+        result.notaHeaders.forEach((h, idx) => {
+          const lower = h.trim().toLowerCase();
+          if (
+            lower.includes('nota') ||
+            lower.includes('pesanan') ||
+            lower.includes('order') ||
+            lower.includes('resi') ||
+            lower.includes('barcode')
+          ) {
+            colOrder = idx;
+          } else if (
+            lower.includes('platform') ||
+            lower.includes('ekspedisi') ||
+            lower.includes('marketplace') ||
+            lower.includes('toko') ||
+            lower.includes('channel')
+          ) {
+            colPlatform = idx;
+          } else if (
+            lower.includes('tanggal') ||
+            lower.includes('tgl') ||
+            lower.includes('date')
+          ) {
+            colDate = idx;
+          } else if (
+            lower.includes('waktu admin') ||
+            lower.includes('jam admin') ||
+            lower.includes('waktu input') ||
+            lower.includes('jam input') ||
+            lower === 'waktu' ||
+            lower === 'jam' ||
+            lower === 'time'
+          ) {
+            colTime = idx;
+          } else if (
+            lower.includes('status packing') ||
+            lower.includes('status') ||
+            lower.includes('packing') ||
+            lower.includes('kondisi') ||
+            lower.includes('keterangan') ||
+            lower.includes('proses') ||
+            lower.includes('cek')
+          ) {
+            colStatus = idx;
+          } else if (
+            lower.includes('waktu packing') ||
+            lower.includes('jam packing') ||
+            lower.includes('tgl packing') ||
+            lower.includes('tanggal packing') ||
+            lower.includes('waktu pack') ||
+            lower.includes('jam pack') ||
+            lower.includes('packed at') ||
+            lower.includes('packed time')
+          ) {
+            colPackTime = idx;
+          } else if (
+            lower.includes('catatan') ||
+            lower.includes('notes') ||
+            lower.includes('ket')
+          ) {
+            colNotes = idx;
+          }
+        });
+      }
+
+      const parsed: SheetProcessedNotaRow[] = [];
+      result.notaRows.forEach((r, idx) => {
+        if (!r || r.length === 0 || !r.some((cell) => cell && cell.trim() !== '')) {
+          return;
+        }
+        const no = r[0] ? r[0].trim() : String(idx + 1);
+        const orderNumber = r[colOrder] ? r[colOrder].trim().toUpperCase() : '';
+        const rawPlatform = r[colPlatform] ? r[colPlatform].trim() : '';
+        const adminDate = r[colDate] ? r[colDate].trim() : '-';
+        const adminTime = r[colTime] ? r[colTime].trim() : '-';
+        const rawStatus = r[colStatus] ? r[colStatus].trim() : '';
+        const packingTime = r[colPackTime] ? r[colPackTime].trim() : '';
+        const notes = r[colNotes] ? r[colNotes].trim() : '';
+
+        if (!orderNumber) return;
+
+        const isPacked =
+          (result.packingMap && result.packingMap.has(orderNumber)) ||
+          rawStatus.toLowerCase().includes('selesai') ||
+          rawStatus.toLowerCase().includes('sudah') ||
+          rawStatus.toLowerCase().includes('packed') ||
+          rawStatus.toLowerCase().includes('siap kirim');
+
+        let platform: PlatformType = 'Shopee';
+        const pLower = rawPlatform.toLowerCase();
+        if (pLower.includes('tokopedia') || pLower.includes('tiktok') || pLower.includes('tokped')) {
+          platform = 'Tokopedia/TikTok';
+        } else if (pLower.includes('shopee')) {
+          platform = 'Shopee';
+        } else {
+          platform = detectPlatform(orderNumber);
+        }
+
+        parsed.push({
+          rowNumber: idx + 2,
+          no,
+          orderNumber,
+          platform,
+          adminDate,
+          adminTime,
+          isPacked,
+          packingStatus: isPacked ? 'Selesai Packing' : 'Belum Packing',
+          packingTime,
+          notes,
+        });
+      });
+
+      setSheetRows(parsed);
+      setTodayStatsSource('sheet');
+    } catch {
+      // ignore
+    } finally {
+      setSheetLoading(false);
+    }
+  }, [accessToken, targetSpreadsheetId, targetSheetTab]);
+
+  useEffect(() => {
+    if (accessToken) {
+      loadSheetData();
+    }
+  }, [accessToken, loadSheetData]);
+
+  // Google Sheet Today's strictly filtered rows
+  const sheetTodayStrictRows = useMemo(() => {
+    return sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime));
+  }, [sheetRows]);
+
+  const sheetTodayStats = useMemo(() => {
+    const totalToday = sheetTodayStrictRows.length;
+    const packedToday = sheetTodayStrictRows.filter((r) => r.isPacked).length;
+    const pendingToday = Math.max(0, totalToday - packedToday);
+    const percentToday = totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
+    const shopeeTotal = sheetTodayStrictRows.filter((r) => r.platform === 'Shopee').length;
+    const tokpedTotal = sheetTodayStrictRows.filter((r) => r.platform === 'Tokopedia/TikTok').length;
+    const shopeePacked = sheetTodayStrictRows.filter((r) => r.isPacked && r.platform === 'Shopee').length;
+    const tokpedPacked = sheetTodayStrictRows.filter((r) => r.isPacked && r.platform === 'Tokopedia/TikTok').length;
+    const shopeePending = Math.max(0, shopeeTotal - shopeePacked);
+    const tokpedPending = Math.max(0, tokpedTotal - tokpedPacked);
+
+    return {
+      totalToday,
+      packedToday,
+      pendingToday,
+      percentToday,
+      shopeeTotal,
+      tokpedTotal,
+      shopeePacked,
+      tokpedPacked,
+      shopeePending,
+      tokpedPending,
+    };
+  }, [sheetTodayStrictRows]);
+
+  // Today's statistics for active session
+  const localTodayStats = useMemo(() => {
+    const todayNotas = processedNotas.filter((n) =>
+      isDateToday(n.date, n.timestamp, n.createdAt)
+    );
+    const targetNotas = todayNotas.length > 0 ? todayNotas : processedNotas;
+    const totalToday = targetNotas.length > 0 ? targetNotas.length : orders.length;
+
+    const packedCountFromProcessed = targetNotas.filter((n) => n.isPacked).length;
+    const packedToday = Math.max(packedCountFromProcessed, orders.length);
+    const pendingToday = Math.max(0, totalToday - packedToday);
+    const percentToday =
+      totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : orders.length > 0 ? 100 : 0;
+
+    const shopeeTotal =
+      targetNotas.length > 0
+        ? targetNotas.filter((n) => n.platform === 'Shopee').length
+        : orders.filter((o) => o.platform === 'Shopee').length;
+    const tokpedTotal =
+      targetNotas.length > 0
+        ? targetNotas.filter((n) => n.platform === 'Tokopedia/TikTok').length
+        : orders.filter((o) => o.platform === 'Tokopedia/TikTok').length;
+
+    const shopeePacked = Math.max(
+      targetNotas.filter((n) => n.isPacked && n.platform === 'Shopee').length,
+      orders.filter((o) => o.platform === 'Shopee').length
+    );
+    const tokpedPacked = Math.max(
+      targetNotas.filter((n) => n.isPacked && n.platform === 'Tokopedia/TikTok').length,
+      orders.filter((o) => o.platform === 'Tokopedia/TikTok').length
+    );
+
+    const shopeePending = Math.max(0, shopeeTotal - shopeePacked);
+    const tokpedPending = Math.max(0, tokpedTotal - tokpedPacked);
+
+    return {
+      totalToday,
+      packedToday,
+      pendingToday,
+      percentToday,
+      shopeeTotal,
+      tokpedTotal,
+      shopeePacked,
+      tokpedPacked,
+      shopeePending,
+      tokpedPending,
+    };
+  }, [processedNotas, orders]);
+
+  // Active performance metrics chosen by user or auto-fallback
+  const activePerformanceStats = useMemo(() => {
+    if (todayStatsSource === 'sheet' && sheetRows.length > 0) {
+      return {
+        source: 'sheet' as const,
+        label: `Google Sheet ("${sheetResolvedTab}" ↔ "${sheetResolvedPackingTab}")`,
+        ...sheetTodayStats,
+      };
+    }
+    return {
+      source: 'local' as const,
+      label: 'Sesi Scan Lokal',
+      ...localTodayStats,
+    };
+  }, [todayStatsSource, sheetRows.length, sheetTodayStats, localTodayStats, sheetResolvedTab, sheetResolvedPackingTab]);
+
   return (
     <div className="space-y-6">
-      {/* Informasi Pemindahan Dashboard ke Menu Beranda (Agar Tampilan Rapi) */}
-      {onNavigateToBeranda && (
-        <div
-          id="banner-beranda-from-packing"
-          className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs"
-        >
+      {/* Ringkasan Metrik Performa Packing Hari Ini (Nota Masuk vs Berhasil Di-Packing) */}
+      <div
+        id="packing-performance-summary-top"
+        className="bg-slate-900 text-white rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-md relative overflow-hidden space-y-4"
+      >
+        {/* Subtle decorative glows */}
+        <div className="absolute -top-16 -right-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Header Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10 pb-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-500/20 text-indigo-400 border border-indigo-400/30 rounded-xl shrink-0">
-              <FileSpreadsheet className="w-5 h-5" />
+            <div className="p-2.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl shrink-0">
+              <TrendingUp className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm text-white">
-                  Dashboard & Ringkasan Status Packing
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
-                  Tersedia di Menu Beranda
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-bold text-base sm:text-lg text-white tracking-tight">
+                  Performa Packing Hari Ini
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  {activePerformanceStats.percentToday}% Berhasil Di-Packing
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Dashboard status packing lengkap kini telah dipindahkan ke menu <strong>Beranda</strong> agar halaman scan ini tetap rapi, cepat, dan fokus.
+              <p className="text-xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-2">
+                <span>
+                  {new Date().toLocaleDateString('id-ID', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </span>
+                <span>•</span>
+                <span className="text-slate-300">
+                  Sumber: <strong>{activePerformanceStats.label}</strong>
+                </span>
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            id="btn-open-beranda-from-packing"
-            onClick={onNavigateToBeranda}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
-          >
-            <span>Buka Menu Beranda</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+
+          {/* Quick Tools & Source Switcher */}
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
+            {sheetRows.length > 0 && (
+              <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
+                <button
+                  type="button"
+                  id="btn-metric-source-sheet"
+                  onClick={() => setTodayStatsSource('sheet')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    todayStatsSource === 'sheet'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
+                  }`}
+                  title="Gunakan data dari Google Sheet"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Google Sheet ({sheetTodayStats.totalToday})</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-metric-source-local"
+                  onClick={() => setTodayStatsSource('local')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    todayStatsSource === 'local'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
+                  }`}
+                  title="Gunakan data dari Sesi Scan Lokal"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Sesi Lokal ({localTodayStats.totalToday})</span>
+                </button>
+              </div>
+            )}
+
+            {accessToken && (
+              <button
+                type="button"
+                id="btn-metric-refresh-sheet"
+                onClick={loadSheetData}
+                disabled={sheetLoading}
+                className="p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-xl text-xs transition-all cursor-pointer"
+                title="Segarkan data dari Google Sheets"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${sheetLoading ? 'animate-spin text-emerald-400' : ''}`} />
+              </button>
+            )}
+
+            {onNavigateToBeranda && (
+              <button
+                type="button"
+                id="btn-open-beranda-from-metric"
+                onClick={onNavigateToBeranda}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-1 cursor-pointer"
+                title="Buka dashboard lengkap di Beranda"
+              >
+                <span>Dashboard Beranda</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
-      )}
+
+        {/* Primary Metric Grid: Hero Progress & Stat Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 relative z-10">
+          {/* Hero Performance Card (5 cols) */}
+          <div
+            id="card-metric-hero-performance"
+            className="lg:col-span-5 bg-slate-800/60 border border-slate-700/70 rounded-xl p-4 sm:p-5 flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Percent className="w-3.5 h-3.5 text-emerald-400" />
+                  Tingkat Keberhasilan Packing
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                    activePerformanceStats.percentToday === 100
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : activePerformanceStats.percentToday >= 80
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : activePerformanceStats.percentToday >= 50
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : activePerformanceStats.totalToday === 0
+                      ? 'bg-slate-700/60 text-slate-400 border-slate-600'
+                      : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                  }`}
+                >
+                  {activePerformanceStats.percentToday === 100
+                    ? '✓ 100% Selesai'
+                    : activePerformanceStats.percentToday >= 80
+                    ? '⚡ Performa Tinggi'
+                    : activePerformanceStats.percentToday >= 50
+                    ? '⏳ Sedang Berjalan'
+                    : activePerformanceStats.totalToday === 0
+                    ? 'Belum Ada Nota'
+                    : '⚠️ Perlu Dikejar'}
+                </span>
+              </div>
+
+              <div className="flex items-baseline gap-2 mt-3">
+                <span className="text-4xl sm:text-5xl font-black text-emerald-400 tracking-tight">
+                  {activePerformanceStats.percentToday}%
+                </span>
+                <span className="text-xs font-semibold text-slate-300">
+                  Ter-Packing Hari Ini
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-300 mt-1">
+                {activePerformanceStats.totalToday > 0 ? (
+                  <>
+                    <strong className="text-emerald-300 font-bold">
+                      {activePerformanceStats.packedToday}
+                    </strong>{' '}
+                    dari total{' '}
+                    <strong className="text-white font-bold">
+                      {activePerformanceStats.totalToday} nota masuk
+                    </strong>{' '}
+                    hari ini berhasil di-packing.
+                  </>
+                ) : (
+                  'Belum ada nota masuk yang tercatat untuk tanggal hari ini.'
+                )}
+              </p>
+            </div>
+
+            {/* Visual Progress Bar */}
+            <div className="mt-4 pt-3 border-t border-slate-700/60">
+              <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-700">
+                <div
+                  className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                  style={{ width: `${activePerformanceStats.percentToday}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1.5">
+                <span>
+                  Selesai: {activePerformanceStats.packedToday} ({activePerformanceStats.percentToday}%)
+                </span>
+                <span>
+                  Sisa: {activePerformanceStats.pendingToday} ({activePerformanceStats.totalToday > 0 ? 100 - activePerformanceStats.percentToday : 0}%)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 3 Metric Stat Cards (7 cols) */}
+          <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Card 1: TOTAL NOTA MASUK HARI INI */}
+            <div
+              id="card-metric-total-incoming"
+              className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between text-indigo-300 mb-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">
+                    Total Nota Masuk
+                  </span>
+                  <Boxes className="w-4 h-4 text-indigo-400 shrink-0" />
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                    {sheetLoading && todayStatsSource === 'sheet' ? '...' : activePerformanceStats.totalToday}
+                  </span>
+                  <span className="text-xs text-slate-400 font-semibold">Nota</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Nota masuk tanggal hari ini
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-slate-700/60 text-[10px] text-slate-300 flex items-center justify-between">
+                <span>Shopee: <strong>{activePerformanceStats.shopeeTotal}</strong></span>
+                <span>Tokped: <strong>{activePerformanceStats.tokpedTotal}</strong></span>
+              </div>
+            </div>
+
+            {/* Card 2: BERHASIL DI-PACKING HARI INI */}
+            <div
+              id="card-metric-total-packed"
+              className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between text-emerald-300 mb-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">
+                    Berhasil Di-Packing
+                  </span>
+                  <PackageCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">
+                    {sheetLoading && todayStatsSource === 'sheet' ? '...' : activePerformanceStats.packedToday}
+                  </span>
+                  <span className="text-xs text-emerald-200/80 font-semibold">Nota</span>
+                </div>
+                <p className="text-[11px] text-emerald-300/80 mt-1">
+                  {activePerformanceStats.percentToday}% telah selesai packing
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-emerald-800/60 text-[10px] text-emerald-200 flex items-center justify-between">
+                <span>Shopee: <strong>{activePerformanceStats.shopeePacked}</strong></span>
+                <span>Tokped: <strong>{activePerformanceStats.tokpedPacked}</strong></span>
+              </div>
+            </div>
+
+            {/* Card 3: BELUM DI-PACKING (SISA) */}
+            <div
+              id="card-metric-total-pending"
+              className={`rounded-xl p-3.5 sm:p-4 flex flex-col justify-between border ${
+                activePerformanceStats.pendingToday > 0
+                  ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                  : 'bg-slate-800/60 border-slate-700/70 text-slate-300'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">
+                    Belum Di-Packing
+                  </span>
+                  <Clock className={`w-4 h-4 shrink-0 ${activePerformanceStats.pendingToday > 0 ? 'text-amber-400' : 'text-slate-400'}`} />
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className={`text-2xl sm:text-3xl font-black tracking-tight ${activePerformanceStats.pendingToday > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
+                    {sheetLoading && todayStatsSource === 'sheet' ? '...' : activePerformanceStats.pendingToday}
+                  </span>
+                  <span className="text-xs font-semibold">Nota</span>
+                </div>
+                <p className="text-[11px] mt-1 opacity-80">
+                  {activePerformanceStats.pendingToday > 0
+                    ? 'Menunggu tim packing'
+                    : 'Semua beres tanpa sisa!'}
+                </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-slate-700/60 text-[10px] flex items-center justify-between">
+                <span>Shopee: <strong>{activePerformanceStats.shopeePending}</strong></span>
+                <span>Tokped: <strong>{activePerformanceStats.tokpedPending}</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Action Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-800 text-xs relative z-10">
+          <div className="flex items-center gap-2 text-slate-400 text-[11px]">
+            <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span>
+              {activePerformanceStats.totalToday > 0 ? (
+                <>
+                  Persentase performa packing dihitung otomatis:{' '}
+                  <strong className="text-slate-200">
+                    ({activePerformanceStats.packedToday} / {activePerformanceStats.totalToday}) × 100% = {activePerformanceStats.percentToday}%
+                  </strong>
+                </>
+              ) : (
+                'Menunggu data nota masuk hari ini untuk menghitung persentase performa packing.'
+              )}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              id="btn-metric-copy-report"
+              onClick={handleCopyPackingReport}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-slate-200 hover:text-white rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Salin ringkasan laporan packing hari ini untuk dibagikan ke WhatsApp tim"
+            >
+              {copiedReport ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-300">Laporan Disalin!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Salin Laporan (WA)</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Admin Nota Status Banner */}
       {processedNotas && processedNotas.length > 0 && (
@@ -1158,51 +1716,6 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
               )}
             </div>
 
-            {/* Copy Button */}
-            <button
-              type="button"
-              id="btn-copy-packed-list"
-              onClick={() => handleCopyList(selectedPlatformFilter === 'Semua' ? undefined : selectedPlatformFilter)}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors"
-              title="Salin nomor pesanan ke clipboard"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              <span>Salin No</span>
-            </button>
-
-            {/* Salin Report Button */}
-            <button
-              type="button"
-              id="btn-copy-packing-report"
-              onClick={handleCopyPackingReport}
-              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
-              title="Salin ringkasan update harian status packing untuk WhatsApp/chat"
-            >
-              {copiedReport ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Tersalin!</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Salin Report</span>
-                </>
-              )}
-            </button>
-
-            {/* Export CSV */}
-            <button
-              type="button"
-              id="btn-export-packing-csv"
-              onClick={handleExportCSV}
-              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-indigo-200"
-              title="Unduh data packing dalam format CSV"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Unduh CSV</span>
-            </button>
-
             {/* Sync to Google Sheet */}
             {onSyncGoogleSheet && (
               <button
@@ -1210,18 +1723,18 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                 id="btn-sync-packing-sheet"
                 onClick={onSyncGoogleSheet}
                 disabled={isSyncing || orders.length === 0}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+                className="px-5 py-2.5 sm:px-6 sm:py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white rounded-xl text-sm sm:text-base font-extrabold flex items-center gap-2 transition-all shadow-md hover:shadow-lg cursor-pointer shrink-0"
                 title="Simpan data scan ke sheet 'Packing Reg' (1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI)"
               >
                 {isSyncing ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Menyimpan...</span>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Menyimpan Data...</span>
                   </>
                 ) : (
                   <>
-                    <CloudUpload className="w-3.5 h-3.5" />
-                    <span>Simpan ke Packing Reg</span>
+                    <CloudUpload className="w-5 h-5" />
+                    <span>Simpan Data</span>
                   </>
                 )}
               </button>
@@ -1357,33 +1870,6 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
           </table>
         </div>
       </div>
-
-      {/* Banner Pintasan Menu Riwayat Google Sheet */}
-      {onNavigateToSheetHistory && (
-        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200/90 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
-          <div className="flex items-center gap-3 text-emerald-950">
-            <div className="p-2.5 bg-white rounded-xl text-emerald-600 shadow-2xs border border-emerald-100 shrink-0">
-              <Sparkles className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="font-bold text-sm text-slate-900">
-                Riwayat Tab "Packing Reg" Kini Berada di Menu Riwayat Google Sheet
-              </p>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Pantau seluruh arsip data Google Sheet tanpa perlu scroll panjang ke bawah.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onNavigateToSheetHistory}
-            className="w-full sm:w-auto px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
-          >
-            <span>Buka Menu Riwayat Google Sheet</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {/* Clear Confirmation Modal */}
       <AnimatePresence>
