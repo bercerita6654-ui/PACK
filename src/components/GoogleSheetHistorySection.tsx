@@ -86,7 +86,7 @@ export const GoogleSheetHistorySection: React.FC<GoogleSheetHistorySectionProps>
   return (
     <section id="google-sheet-history-section" className="space-y-6">
       {/* Top Banner & Tab Controls */}
-      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+      <div className="hidden bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200/80 shrink-0">

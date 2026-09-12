@@ -212,20 +212,10 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <LayoutDashboard className="w-4 h-4 text-indigo-600" />
             <span>Beranda</span>
-            {delayedNotaCount > 0 ? (
+            {delayedNotaCount > 0 && (
               <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-2xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping inline-block" />
                 <span>{delayedNotaCount} Cek!</span>
-              </span>
-            ) : (
-              <span
-                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
-                  activeTab === 'beranda'
-                    ? 'bg-indigo-100 text-indigo-900'
-                    : 'bg-slate-200/70 text-slate-600'
-                }`}
-              >
-                Dashboard
               </span>
             )}
           </button>
