@@ -692,6 +692,28 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const pendingCount = totalNotas - packedCount;
   const progressPercent = totalNotas > 0 ? Math.round((packedCount / totalNotas) * 100) : 0;
 
+  const [showPlatformBreakdown, setShowPlatformBreakdown] = useState<boolean>(true);
+
+  const shopeeNotas = useMemo(
+    () => effectiveNotas.filter((n) => n.platform === 'Shopee'),
+    [effectiveNotas]
+  );
+  const tokpedNotas = useMemo(
+    () => effectiveNotas.filter((n) => n.platform === 'Tokopedia/TikTok'),
+    [effectiveNotas]
+  );
+
+  const handleCopyPlatformOrders = (platform: PlatformType) => {
+    const list = platform === 'Shopee' ? shopeeNotas : tokpedNotas;
+    if (list.length === 0) {
+      showToast(`Belum ada pesanan ${platform} yang di-scan.`, 'warning');
+      return;
+    }
+    const text = list.map((n) => n.orderNumber).join('\n');
+    navigator.clipboard.writeText(text);
+    showToast(`${list.length} nomor pesanan ${platform} disalin ke clipboard.`, 'success');
+  };
+
   // Google Sheet Today's strictly filtered rows
   const sheetTodayStrictRows = useMemo(() => {
     return sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime));
@@ -1200,25 +1222,290 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
         )}
       </div>
 
-      {/* Summary Metric Card (Sesi Scan Lokal) */}
-      <div className="grid grid-cols-1 gap-3 sm:gap-4">
-        {/* Total Nota Diproses */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-slate-100 flex items-center justify-between">
-          <div>
-            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
-              Total Nota Diproses
+      {/* Summary Metric Card (Sesi Scan Lokal) dengan Breakdown Otomatis Shopee & Tokopedia */}
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          {/* Total Nota Diproses */}
+          <div
+            id="card-local-total-summary"
+            onClick={() => setPlatformFilter('Semua')}
+            className={`bg-white p-4 sm:p-5 rounded-2xl shadow-xs border transition-all cursor-pointer flex flex-col justify-between ${
+              platformFilter === 'Semua'
+                ? 'border-amber-400 ring-2 ring-amber-100'
+                : 'border-slate-200/80 hover:border-slate-300'
+            }`}
+            title="Klik untuk menampilkan semua platform di tabel"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Total Nota
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                  Semua ({totalNotas})
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none">
+                  {totalNotas}
+                </span>
+                <span className="text-xs font-semibold text-slate-400">Nota Aktif</span>
+              </div>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none">
-                {totalNotas}
+            <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+              <span className="flex items-center gap-1 text-emerald-700 font-semibold text-[11px]">
+                <CheckCircle2 className="w-3 h-3" />
+                {packedCount} Selesai
               </span>
-              <span className="text-xs font-semibold text-slate-400">Nota Terdaftar dalam Sesi Aktif</span>
+              <span className="flex items-center gap-1 text-amber-700 font-semibold text-[11px]">
+                <Clock className="w-3 h-3" />
+                {pendingCount} Belum
+              </span>
             </div>
           </div>
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
-            Sesi Scan Aktif
-          </span>
+
+          {/* Shopee Otomatis */}
+          <div
+            id="card-local-shopee-summary"
+            onClick={() => setPlatformFilter(platformFilter === 'Shopee' ? 'Semua' : 'Shopee')}
+            className={`bg-orange-50/60 p-4 sm:p-5 rounded-2xl shadow-xs border transition-all cursor-pointer flex flex-col justify-between ${
+              platformFilter === 'Shopee'
+                ? 'border-orange-500 ring-2 ring-orange-200 bg-orange-50'
+                : 'border-orange-200/90 hover:border-orange-300'
+            }`}
+            title="Klik untuk filter khusus pesanan Shopee"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-orange-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                  Pesanan Shopee
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-500 text-white uppercase tracking-tight">
+                  Otomatis
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-black text-orange-950 leading-none">
+                  {shopeeNotas.length}
+                </span>
+                <span className="text-xs font-semibold text-orange-700">Pesanan</span>
+              </div>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-orange-200/60 flex items-center justify-between text-xs text-orange-800">
+              <span className="text-[11px] font-medium">
+                {shopeeNotas.filter((n) => n.isPacked).length} Selesai Packing
+              </span>
+              <span className="text-[11px] font-bold text-orange-900">
+                {shopeeNotas.filter((n) => !n.isPacked).length} Belum
+              </span>
+            </div>
+          </div>
+
+          {/* Tokopedia / TikTok Otomatis */}
+          <div
+            id="card-local-tokped-summary"
+            onClick={() =>
+              setPlatformFilter(
+                platformFilter === 'Tokopedia/TikTok' ? 'Semua' : 'Tokopedia/TikTok'
+              )
+            }
+            className={`bg-emerald-50/60 p-4 sm:p-5 rounded-2xl shadow-xs border transition-all cursor-pointer flex flex-col justify-between ${
+              platformFilter === 'Tokopedia/TikTok'
+                ? 'border-emerald-500 ring-2 ring-emerald-200 bg-emerald-50'
+                : 'border-emerald-200/90 hover:border-emerald-300'
+            }`}
+            title="Klik untuk filter khusus pesanan Tokopedia/TikTok"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                  Tokopedia / TikTok
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white uppercase tracking-tight">
+                  Otomatis
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl sm:text-3xl font-black text-emerald-950 leading-none">
+                  {tokpedNotas.length}
+                </span>
+                <span className="text-xs font-semibold text-emerald-700">Pesanan</span>
+              </div>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-emerald-200/60 flex items-center justify-between text-xs text-emerald-800">
+              <span className="text-[11px] font-medium">
+                {tokpedNotas.filter((n) => n.isPacked).length} Selesai Packing
+              </span>
+              <span className="text-[11px] font-bold text-emerald-900">
+                {tokpedNotas.filter((n) => !n.isPacked).length} Belum
+              </span>
+            </div>
+          </div>
         </div>
+
+        {/* Detail Rincian Otomatis Pesanan Shopee & Tokopedia */}
+        {totalNotas > 0 && (
+          <div
+            id="panel-detail-breakdown-orders"
+            className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-3"
+          >
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-amber-50 text-amber-800 rounded-lg">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                    Rincian Pesanan Ter-scan Otomatis (Shopee & Tokopedia)
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Setiap nota yang di-scan otomatis terklasifikasi ke daftar Shopee atau Tokopedia di bawah ini.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="btn-toggle-platform-breakdown"
+                onClick={() => setShowPlatformBreakdown(!showPlatformBreakdown)}
+                className="px-2.5 py-1 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+              >
+                {showPlatformBreakdown ? 'Sembunyikan Rincian' : 'Tampilkan Rincian'}
+              </button>
+            </div>
+
+            {showPlatformBreakdown && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                {/* Kolom Shopee */}
+                <div
+                  id="panel-orders-shopee"
+                  className="bg-orange-50/40 border border-orange-200 rounded-xl p-3 flex flex-col h-full"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-orange-200/70 mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+                      <span className="text-xs font-bold text-orange-950">
+                        Shopee ({shopeeNotas.length} Pesanan)
+                      </span>
+                    </div>
+                    {shopeeNotas.length > 0 && (
+                      <button
+                        type="button"
+                        id="btn-copy-shopee-orders"
+                        onClick={() => handleCopyPlatformOrders('Shopee')}
+                        className="px-2 py-0.5 bg-white hover:bg-orange-100 text-orange-800 border border-orange-300 rounded text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                        title="Salin semua nomor pesanan Shopee"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>Salin No. Pesanan</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {shopeeNotas.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-orange-700/80 italic">
+                      Belum ada nota Shopee yang di-scan dalam sesi ini.
+                    </div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 text-xs">
+                      {shopeeNotas.map((nota, idx) => (
+                        <div
+                          key={nota.id}
+                          className="bg-white p-2 rounded-lg border border-orange-200/80 flex items-center justify-between gap-2 shadow-2xs hover:border-orange-400 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[10px] font-bold text-slate-400 w-4">
+                              {idx + 1}.
+                            </span>
+                            <span className="font-mono font-bold text-slate-900 truncate text-xs">
+                              {nota.orderNumber}
+                            </span>
+                            <span className="text-[10px] text-slate-500 shrink-0">
+                              {nota.timestamp}
+                            </span>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
+                              nota.isPacked
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {nota.isPacked ? 'Selesai' : 'Belum Packing'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Kolom Tokopedia / TikTok */}
+                <div
+                  id="panel-orders-tokped"
+                  className="bg-emerald-50/40 border border-emerald-200 rounded-xl p-3 flex flex-col h-full"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-emerald-200/70 mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                      <span className="text-xs font-bold text-emerald-950">
+                        Tokopedia / TikTok ({tokpedNotas.length} Pesanan)
+                      </span>
+                    </div>
+                    {tokpedNotas.length > 0 && (
+                      <button
+                        type="button"
+                        id="btn-copy-tokped-orders"
+                        onClick={() => handleCopyPlatformOrders('Tokopedia/TikTok')}
+                        className="px-2 py-0.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                        title="Salin semua nomor pesanan Tokopedia"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>Salin No. Pesanan</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {tokpedNotas.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-emerald-700/80 italic">
+                      Belum ada nota Tokopedia/TikTok yang di-scan dalam sesi ini.
+                    </div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 text-xs">
+                      {tokpedNotas.map((nota, idx) => (
+                        <div
+                          key={nota.id}
+                          className="bg-white p-2 rounded-lg border border-emerald-200/80 flex items-center justify-between gap-2 shadow-2xs hover:border-emerald-400 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[10px] font-bold text-slate-400 w-4">
+                              {idx + 1}.
+                            </span>
+                            <span className="font-mono font-bold text-slate-900 truncate text-xs">
+                              {nota.orderNumber}
+                            </span>
+                            <span className="text-[10px] text-slate-500 shrink-0">
+                              {nota.timestamp}
+                            </span>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
+                              nota.isPacked
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {nota.isPacked ? 'Selesai' : 'Belum Packing'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Scanner Control Box */}
