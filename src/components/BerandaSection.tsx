@@ -25,7 +25,7 @@ import {
   SheetProcessedNotaRow,
 } from '../types';
 import { fetchCrossReferencedNotasAndPacking } from '../services/googleWorkspace';
-import { isAuthExpiredError } from '../services/googleAuth';
+import { isAuthExpiredError, invalidateStoredToken } from '../services/googleAuth';
 import {
   parseNotaDateTime,
   formatElapsedDuration,
@@ -345,11 +345,13 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
       setSheetRows(parsed);
       setSheetLastFetchedAt(new Date());
     } catch (err: any) {
-      console.error('Error fetching sheet rows in Beranda:', err);
       if (isAuthExpiredError(err)) {
+        console.warn('Google Sheets session is unauthenticated or expired in Beranda. Invalidating token.');
+        invalidateStoredToken();
         if (onTokenExpired) onTokenExpired();
-        setSheetError('Sesi Google Sheets telah berakhir. Klik "Perbarui Sesi Google".');
+        setSheetError('Sesi Google Sheets memerlukan otentikasi. Silakan klik "Hubungkan Akun Google".');
       } else {
+        console.error('Error fetching sheet rows in Beranda:', err);
         setSheetError(err.message || 'Gagal memuat data dari Google Sheets');
       }
     } finally {
@@ -920,11 +922,44 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
           </div>
         </div>
 
+        {/* Connection status banner if not connected */}
+        {!accessToken && (
+          <div className="mt-4 p-3.5 bg-slate-800/80 border border-slate-700/80 rounded-2xl text-xs text-slate-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-emerald-500/10 rounded-lg text-emerald-400 shrink-0">
+                <FileSpreadsheet className="w-4 h-4" />
+              </div>
+              <span className="text-slate-300">
+                Google Sheets belum terhubung. Hubungkan akun Google Anda untuk sinkronisasi data status paket secara langsung.
+              </span>
+            </div>
+            <button
+              type="button"
+              id="btn-beranda-connect-google"
+              onClick={onLoginGoogle}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shrink-0 transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-slate-950" />
+              <span>Hubungkan Akun Google</span>
+            </button>
+          </div>
+        )}
+
         {/* Error notification if any */}
         {sheetError && (
-          <div className="mt-4 p-3 bg-rose-900/60 border border-rose-700 rounded-xl text-xs text-rose-200 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>{sheetError}</span>
+          <div className="mt-4 p-3.5 bg-rose-900/60 border border-rose-700/80 rounded-2xl text-xs text-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 relative z-10">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{sheetError}</span>
+            </div>
+            <button
+              type="button"
+              id="btn-beranda-reconnect-error"
+              onClick={onLoginGoogle}
+              className="px-3 py-1 bg-white text-rose-950 hover:bg-rose-50 font-bold rounded-lg text-xs shrink-0 transition-colors shadow-2xs cursor-pointer"
+            >
+              Perbarui Sesi Google
+            </button>
           </div>
         )}
       </div>

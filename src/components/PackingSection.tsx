@@ -1599,277 +1599,282 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
         )}
       </div>
 
-      {/* Summary Counters: Total, Shopee, Tokopedia/TikTok */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Total Card */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Total Sudah Di-Packing
-            </span>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">
-              {totalOrders} <span className="text-xs sm:text-sm font-semibold text-slate-500">Paket</span>
+      {/* Summary Counters & Orders List: Muncul otomatis begitu sudah ada data yang di-scan */}
+      {totalOrders > 0 && (
+        <>
+          {/* Summary Counters: Total, Shopee, Tokopedia/TikTok */}
+          <div id="packing-summary-counters" className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Total Card */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Total Sudah Di-Packing
+                </span>
+                <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">
+                  {totalOrders} <span className="text-xs sm:text-sm font-semibold text-slate-500">Paket</span>
+                </div>
+              </div>
+              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
             </div>
-          </div>
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
-            <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-        </div>
 
-        {/* Shopee Card */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-orange-100 shadow-sm flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-              <span className="text-xs font-bold uppercase tracking-wider text-orange-600">
-                Pesanan Shopee
-              </span>
+            {/* Shopee Card */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-orange-100 shadow-sm flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-orange-600">
+                    Pesanan Shopee
+                  </span>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-orange-600 mt-1">
+                  {shopeeCount} <span className="text-xs sm:text-sm font-semibold text-slate-500">Paket</span>
+                </div>
+              </div>
+              <div className="p-3 bg-orange-50 text-orange-600 rounded-xl">
+                <span className="font-black text-lg">S</span>
+              </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-orange-600 mt-1">
-              {shopeeCount} <span className="text-xs sm:text-sm font-semibold text-slate-500">Paket</span>
-            </div>
-          </div>
-          <div className="p-3 bg-orange-50 text-orange-600 rounded-xl">
-            <span className="font-black text-lg">S</span>
-          </div>
-        </div>
 
-        {/* Tokopedia / TikTok Card */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-emerald-100 shadow-sm flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-                Tokopedia / TikTok
-              </span>
+            {/* Tokopedia / TikTok Card */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-emerald-100 shadow-sm flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                    Tokopedia / TikTok
+                  </span>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-emerald-700 mt-1">
+                  {tokpedTiktokCount} <span className="text-xs sm:text-sm font-semibold text-slate-500">Paket</span>
+                </div>
+              </div>
+              <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl">
+                <span className="font-black text-lg">T</span>
+              </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-emerald-700 mt-1">
-              {tokpedTiktokCount} <span className="text-xs sm:text-sm font-semibold text-slate-500">Paket</span>
-            </div>
-          </div>
-          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl">
-            <span className="font-black text-lg">T</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Orders List & Management */}
-      <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 space-y-4">
-        {/* Table Controls: Search, Platform Filter & Export Actions */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          {/* Left: Filter Tabs */}
-          <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl shrink-0 overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setSelectedPlatformFilter('Semua')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-                selectedPlatformFilter === 'Semua'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Semua ({totalOrders})
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedPlatformFilter('Shopee')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-                selectedPlatformFilter === 'Shopee'
-                  ? 'bg-orange-500 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-orange-600'
-              }`}
-            >
-              Shopee ({shopeeCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedPlatformFilter('Tokopedia/TikTok')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-                selectedPlatformFilter === 'Tokopedia/TikTok'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-emerald-700'
-              }`}
-            >
-              Tokopedia / TikTok ({tokpedTiktokCount})
-            </button>
           </div>
 
-          {/* Right: Search & Action buttons */}
-          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
-                placeholder="Cari No. Pesanan..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl uppercase placeholder:normal-case focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              {searchQuery && (
+          {/* Orders List & Management */}
+          <div id="packing-orders-list-container" className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 space-y-4">
+            {/* Table Controls: Search, Platform Filter & Export Actions */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              {/* Left: Filter Tabs */}
+              <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl shrink-0 overflow-x-auto">
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  onClick={() => setSelectedPlatformFilter('Semua')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+                    selectedPlatformFilter === 'Semua'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  ✕
+                  Semua ({totalOrders})
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlatformFilter('Shopee')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+                    selectedPlatformFilter === 'Shopee'
+                      ? 'bg-orange-500 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-orange-600'
+                  }`}
+                >
+                  Shopee ({shopeeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlatformFilter('Tokopedia/TikTok')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+                    selectedPlatformFilter === 'Tokopedia/TikTok'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-emerald-700'
+                  }`}
+                >
+                  Tokopedia / TikTok ({tokpedTiktokCount})
+                </button>
+              </div>
+
+              {/* Right: Search & Action buttons */}
+              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
+                    placeholder="Cari No. Pesanan..."
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl uppercase placeholder:normal-case focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Sync to Google Sheet */}
+                {onSyncGoogleSheet && (
+                  <button
+                    type="button"
+                    id="btn-sync-packing-sheet"
+                    onClick={onSyncGoogleSheet}
+                    disabled={isSyncing || orders.length === 0}
+                    className="px-5 py-2.5 sm:px-6 sm:py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white rounded-xl text-sm sm:text-base font-extrabold flex items-center gap-2 transition-all shadow-md hover:shadow-lg cursor-pointer shrink-0"
+                    title="Simpan data scan ke sheet 'Packing Reg' (1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI)"
+                  >
+                    {isSyncing ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span>Menyimpan Data...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CloudUpload className="w-5 h-5" />
+                        <span>Simpan Data</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {/* Clear Button */}
+                {orders.length > 0 && (
+                  <button
+                    type="button"
+                    id="btn-clear-packing"
+                    onClick={() => setConfirmClearOpen(true)}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-rose-200"
+                    title="Kosongkan data paket packing"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Sync to Google Sheet */}
-            {onSyncGoogleSheet && (
-              <button
-                type="button"
-                id="btn-sync-packing-sheet"
-                onClick={onSyncGoogleSheet}
-                disabled={isSyncing || orders.length === 0}
-                className="px-5 py-2.5 sm:px-6 sm:py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white rounded-xl text-sm sm:text-base font-extrabold flex items-center gap-2 transition-all shadow-md hover:shadow-lg cursor-pointer shrink-0"
-                title="Simpan data scan ke sheet 'Packing Reg' (1HSUiF20wpTJbfYdpOE08gtbRzm1N8IXOrZDs-KGSvnI)"
-              >
-                {isSyncing ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Menyimpan Data...</span>
-                  </>
-                ) : (
-                  <>
-                    <CloudUpload className="w-5 h-5" />
-                    <span>Simpan Data</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* Clear Button */}
-            {orders.length > 0 && (
-              <button
-                type="button"
-                id="btn-clear-packing"
-                onClick={() => setConfirmClearOpen(true)}
-                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-rose-200"
-                title="Kosongkan data paket packing"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Table Content */}
-        <div className="overflow-x-auto rounded-xl border border-slate-200/80">
-          <table className="w-full text-left text-sm border-collapse">
-            <thead>
-              <tr className="bg-slate-100/75 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                <th className="p-3 text-center w-12">#</th>
-                <th className="p-3">No. Pesanan</th>
-                <th className="p-3">Platform</th>
-                <th className="p-3">Waktu Scan</th>
-                <th className="p-3">Status</th>
-                <th className="p-3 text-center w-16">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredOrders.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400">
-                    <ScanBarcode className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                    <p className="font-semibold text-slate-600 text-sm">
-                      {searchQuery || selectedPlatformFilter !== 'Semua'
-                        ? 'Tidak ada nomor pesanan yang cocok dengan filter.'
-                        : 'Belum ada paket yang di-scan.'}
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Scan barcode resi atau gunakan tab "Tempel Massal" untuk input banyak data sekaligus.
-                    </p>
-                  </td>
-                </tr>
-              ) : (
-                filteredOrders.map((order, idx) => {
-                  const platColor = getPlatformColor(order.platform);
-                  return (
-                    <tr
-                      key={order.id}
-                      className="hover:bg-slate-50/80 transition-colors group"
-                    >
-                      <td className="p-3 text-center text-xs font-semibold text-slate-400">
-                        {filteredOrders.length - idx}
-                      </td>
-                      <td className="p-3 font-mono font-bold uppercase text-slate-900 text-sm sm:text-base">
-                        <div className="flex items-center gap-2">
-                          <span>{order.orderNumber}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(order.orderNumber);
-                              showToast(`No. Pesanan ${order.orderNumber} disalin!`, 'info');
-                            }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-slate-700 rounded transition-opacity"
-                            title="Salin No. Pesanan"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${platColor.bg} ${platColor.text} border ${platColor.border}`}
-                        >
-                          {platColor.label}
-                        </span>
-                      </td>
-                      <td className="p-3 text-xs text-slate-600 font-medium">
-                        {order.timestamp}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            Packed
-                          </span>
-                          {processedNotas && processedNotas.length > 0 && (
-                            (() => {
-                              const match = processedNotas.find(
-                                (n) => n.orderNumber.toUpperCase() === order.orderNumber.toUpperCase()
-                              );
-                              if (match) {
-                                return (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                                    <FileText className="w-2.5 h-2.5 text-amber-600" />
-                                    Nota Admin ✓
-                                  </span>
-                                );
-                              }
-                              return (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
-                                  Belum di Nota
-                                </span>
-                              );
-                            })()
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onRemoveOrder(order.id);
-                            showToast(`Pesanan ${order.orderNumber} dihapus.`, 'info');
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="Hapus baris ini"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+            {/* Table Content */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200/80">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead>
+                  <tr className="bg-slate-100/75 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    <th className="p-3 text-center w-12">#</th>
+                    <th className="p-3">No. Pesanan</th>
+                    <th className="p-3">Platform</th>
+                    <th className="p-3">Waktu Scan</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-center w-16">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-12 text-slate-400">
+                        <ScanBarcode className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                        <p className="font-semibold text-slate-600 text-sm">
+                          {searchQuery || selectedPlatformFilter !== 'Semua'
+                            ? 'Tidak ada nomor pesanan yang cocok dengan filter.'
+                            : 'Belum ada paket yang di-scan.'}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Scan barcode resi atau gunakan tab "Tempel Massal" untuk input banyak data sekaligus.
+                        </p>
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                  ) : (
+                    filteredOrders.map((order, idx) => {
+                      const platColor = getPlatformColor(order.platform);
+                      return (
+                        <tr
+                          key={order.id}
+                          className="hover:bg-slate-50/80 transition-colors group"
+                        >
+                          <td className="p-3 text-center text-xs font-semibold text-slate-400">
+                            {filteredOrders.length - idx}
+                          </td>
+                          <td className="p-3 font-mono font-bold uppercase text-slate-900 text-sm sm:text-base">
+                            <div className="flex items-center gap-2">
+                              <span>{order.orderNumber}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(order.orderNumber);
+                                  showToast(`No. Pesanan ${order.orderNumber} disalin!`, 'info');
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-slate-700 rounded transition-opacity"
+                                title="Salin No. Pesanan"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${platColor.bg} ${platColor.text} border ${platColor.border}`}
+                            >
+                              {platColor.label}
+                            </span>
+                          </td>
+                          <td className="p-3 text-xs text-slate-600 font-medium">
+                            {order.timestamp}
+                          </td>
+                          <td className="p-3">
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                Packed
+                              </span>
+                              {processedNotas && processedNotas.length > 0 && (
+                                (() => {
+                                  const match = processedNotas.find(
+                                    (n) => n.orderNumber.toUpperCase() === order.orderNumber.toUpperCase()
+                                  );
+                                  if (match) {
+                                    return (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                        <FileText className="w-2.5 h-2.5 text-amber-600" />
+                                        Nota Admin ✓
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
+                                      Belum di Nota
+                                    </span>
+                                  );
+                                })()
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onRemoveOrder(order.id);
+                                showToast(`Pesanan ${order.orderNumber} dihapus.`, 'info');
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              title="Hapus baris ini"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Clear Confirmation Modal */}
       <AnimatePresence>

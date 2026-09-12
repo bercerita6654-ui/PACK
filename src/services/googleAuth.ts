@@ -22,83 +22,55 @@ export const TOKEN_STORAGE_KEY = 'packTrack_google_access_token';
 export const TOKEN_EXPIRY_KEY = 'packTrack_google_token_expiry';
 export const USER_PROFILE_KEY = 'packTrack_cached_user_profile';
 
+// Immediately purge legacy stored tokens from localStorage to prevent stale 401 unauthenticated errors
+if (typeof window !== 'undefined') {
+  try {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_EXPIRY_KEY);
+  } catch (e) {
+    // Ignore
+  }
+}
+
 let isSigningIn = false;
-let cachedAccessToken: string | null =
-  typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null;
+// In-memory token cache: Google OAuth access tokens are kept purely in memory per security guidelines
+let cachedAccessToken: string | null = null;
+let cachedTokenExpiry: number = 0;
 
 // Helper: Check if stored token is still within validity window
 export const isStoredTokenValid = (): boolean => {
-  try {
-    if (typeof window === 'undefined') return false;
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!token) return false;
-    const expiryStr = localStorage.getItem(TOKEN_EXPIRY_KEY);
-    if (!expiryStr) {
-      // If token exists without expiry, keep it active until 401
-      return true;
-    }
-    const expiry = Number(expiryStr);
-    if (isNaN(expiry) || Date.now() >= expiry) {
-      return false;
-    }
-    return true;
-  } catch (e) {
-    return false;
-  }
+  return Boolean(cachedAccessToken && Date.now() < cachedTokenExpiry);
 };
 
 // Helper: Invalidate and clear stored access token
 export const invalidateStoredToken = () => {
-  try {
-    if (typeof window !== 'undefined') {
+  cachedAccessToken = null;
+  cachedTokenExpiry = 0;
+  if (typeof window !== 'undefined') {
+    try {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
       localStorage.removeItem(TOKEN_EXPIRY_KEY);
+    } catch (e) {
+      console.warn('Could not remove legacy storage items:', e);
     }
-    cachedAccessToken = null;
-  } catch (e) {
-    console.warn('Could not invalidate stored token:', e);
   }
 };
 
-// Helper: Get cached token from localStorage (returns null if invalid)
+// Helper: Get cached token (in-memory)
 export const getStoredAccessToken = (): string | null => {
-  try {
-    if (typeof window === 'undefined') return null;
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!token) return null;
-    
-    // Check expiry
-    const expiryStr = localStorage.getItem(TOKEN_EXPIRY_KEY);
-    if (expiryStr) {
-      const expiry = Number(expiryStr);
-      if (!isNaN(expiry) && Date.now() >= expiry) {
-        // Expired
-        invalidateStoredToken();
-        return null;
-      }
-    }
-    cachedAccessToken = token;
-    return token;
-  } catch (e) {
-    console.warn('Could not read access token from storage:', e);
-    return null;
+  if (cachedAccessToken && Date.now() < cachedTokenExpiry) {
+    return cachedAccessToken;
   }
+  return null;
 };
 
-// Helper: Save token to localStorage with expiry (default: 1 hour)
-export const setStoredAccessToken = (token: string | null, expiresInSeconds = 3600) => {
-  try {
-    if (typeof window === 'undefined') return;
-    if (token) {
-      localStorage.setItem(TOKEN_STORAGE_KEY, token);
-      const expiry = Date.now() + expiresInSeconds * 1000;
-      localStorage.setItem(TOKEN_EXPIRY_KEY, expiry.toString());
-      cachedAccessToken = token;
-    } else {
-      invalidateStoredToken();
-    }
-  } catch (e) {
-    console.warn('Could not write access token to storage:', e);
+// Helper: Save token to in-memory cache with validity window (default: ~55 minutes)
+export const setStoredAccessToken = (token: string | null, expiresInSeconds = 3300) => {
+  if (token) {
+    cachedAccessToken = token;
+    cachedTokenExpiry = Date.now() + expiresInSeconds * 1000;
+  } else {
+    invalidateStoredToken();
   }
 };
 

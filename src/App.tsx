@@ -23,6 +23,7 @@ import {
   logout,
   refreshGoogleToken,
   isAuthExpiredError,
+  invalidateStoredToken,
   getCachedUserProfile,
   getStoredAccessToken,
 } from './services/googleAuth';
@@ -514,6 +515,12 @@ export default function App() {
     setUser(null);
     setAccessToken(null);
     showToast('Berhasil keluar dari akun Google.', 'info');
+  };
+
+  // Handle Token Expiration
+  const handleTokenExpired = () => {
+    invalidateStoredToken();
+    setAccessToken(null);
   };
 
   // Sync to localStorage
@@ -1538,6 +1545,7 @@ export default function App() {
           delayedNotaCount={delayedNotaCount}
           showRekapTab={showRekapTab}
           user={user}
+          accessToken={accessToken}
           activeSpreadsheet={activeSpreadsheet}
           onOpenGoogleDriveModal={() => setIsGoogleDriveModalOpen(true)}
           onOpenSessionModal={() => setIsGoogleSessionModalOpen(true)}
@@ -1589,10 +1597,7 @@ export default function App() {
             accessToken={accessToken}
             userEmail={user?.email}
             onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
-            onTokenExpired={() => {
-              setAccessToken(null);
-              setIsGoogleSessionModalOpen(true);
-            }}
+            onTokenExpired={handleTokenExpired}
             targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
             targetNotaTab={TARGET_NOTA_SHEET_TAB}
             targetPackingTab={TARGET_PACKING_SHEET_TAB}
@@ -1622,10 +1627,7 @@ export default function App() {
             accessToken={accessToken}
             userEmail={user?.email}
             onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
-            onTokenExpired={() => {
-              setAccessToken(null);
-              setIsGoogleSessionModalOpen(true);
-            }}
+            onTokenExpired={handleTokenExpired}
             targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
             targetSheetTab={TARGET_PACKING_SHEET_TAB}
             lastSyncTimestamp={lastPackingSyncTime}
@@ -1653,10 +1655,7 @@ export default function App() {
             accessToken={accessToken}
             userEmail={user?.email}
             onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
-            onTokenExpired={() => {
-              setAccessToken(null);
-              setIsGoogleSessionModalOpen(true);
-            }}
+            onTokenExpired={handleTokenExpired}
             targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
             targetSheetTab={TARGET_NOTA_SHEET_TAB}
             lastSyncTimestamp={lastNotaSyncTime}
@@ -1674,10 +1673,7 @@ export default function App() {
             accessToken={accessToken}
             userEmail={user?.email}
             onLoginGoogle={() => setIsGoogleSessionModalOpen(true)}
-            onTokenExpired={() => {
-              setAccessToken(null);
-              setIsGoogleSessionModalOpen(true);
-            }}
+            onTokenExpired={handleTokenExpired}
             targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
             targetPackingTab={TARGET_PACKING_SHEET_TAB}
             targetNotaTab={TARGET_NOTA_SHEET_TAB}
@@ -1740,7 +1736,7 @@ export default function App() {
         accessToken={accessToken}
         onSignIn={handleGoogleSignIn}
         onSignOut={handleGoogleSignOut}
-        onTokenExpired={() => setAccessToken(null)}
+        onTokenExpired={handleTokenExpired}
         activeSpreadsheet={activeSpreadsheet}
         onSelectSpreadsheet={(sheet) => setActiveSpreadsheet(sheet)}
         showToast={showToast}
@@ -1760,7 +1756,7 @@ export default function App() {
         csvUrl={csvUrl}
         activeSpreadsheet={activeSpreadsheet}
         accessToken={accessToken}
-        onTokenExpired={() => setAccessToken(null)}
+        onTokenExpired={handleTokenExpired}
         initialTab={activeTab === 'packing' ? 'Packing Reg' : 'Rekap Harian'}
       />
 

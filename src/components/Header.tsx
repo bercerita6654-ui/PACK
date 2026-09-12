@@ -27,6 +27,7 @@ interface HeaderProps {
   delayedNotaCount?: number;
   showRekapTab?: boolean;
   user: User | null;
+  accessToken?: string | null;
   activeSpreadsheet: ActiveSpreadsheet | null;
   onOpenGoogleDriveModal: () => void;
   onOpenSessionModal?: () => void;
@@ -48,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   delayedNotaCount = 0,
   showRekapTab = false,
   user,
+  accessToken,
   activeSpreadsheet,
   onOpenGoogleDriveModal,
   onOpenSessionModal,
@@ -124,9 +126,18 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
                 <div className="text-left flex items-center gap-1.5">
                   <span className="font-black text-[11px] leading-tight text-slate-800 group-hover:text-emerald-900">
-                    {isRenewingSession ? 'Memperbarui Sesi...' : 'Perbarui Sesi Google'}
+                    {isRenewingSession
+                      ? 'Memperbarui Sesi...'
+                      : accessToken
+                      ? user.displayName || 'Sesi Google Aktif'
+                      : 'Perbarui Sesi Google'}
                   </span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Sesi Aktif" />
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      accessToken ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'
+                    }`}
+                    title={accessToken ? 'Sesi Google Aktif & Terhubung' : 'Sesi Perlu Diperbarui'}
+                  />
                 </div>
               </button>
 
