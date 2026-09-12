@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileSpreadsheet,
   Layers,
@@ -36,6 +36,7 @@ interface GoogleSheetHistorySectionProps {
   initialSubTab?: 'nota' | 'packing' | 'rekap';
   showRekapTab?: boolean;
   initialFilter?: 'all' | 'pending' | 'overdue' | 'packed';
+  onFilterChange?: (filter: 'all' | 'pending' | 'overdue' | 'packed') => void;
 }
 
 export const GoogleSheetHistorySection: React.FC<GoogleSheetHistorySectionProps> = ({
@@ -55,10 +56,28 @@ export const GoogleSheetHistorySection: React.FC<GoogleSheetHistorySectionProps>
   initialSubTab = 'nota',
   showRekapTab = false,
   initialFilter,
+  onFilterChange,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'nota' | 'packing' | 'rekap'>(
     initialSubTab === 'rekap' && !showRekapTab ? 'nota' : initialSubTab
   );
+
+  const [currentFilter, setCurrentFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>(
+    initialFilter || 'all'
+  );
+
+  useEffect(() => {
+    if (initialFilter) {
+      setCurrentFilter(initialFilter);
+    }
+  }, [initialFilter]);
+
+  const handleStatusFilterChange = (newFilter: 'all' | 'pending' | 'overdue' | 'packed') => {
+    setCurrentFilter(newFilter);
+    if (onFilterChange) {
+      onFilterChange(newFilter);
+    }
+  };
 
   const sheetUrl =
     activeSpreadsheet?.url ||
@@ -178,7 +197,8 @@ export const GoogleSheetHistorySection: React.FC<GoogleSheetHistorySectionProps>
             showToast={showToast}
             packedOrders={packedOrders}
             localNotas={localNotas}
-            selectedStatusFilter={initialFilter}
+            selectedStatusFilter={currentFilter}
+            onStatusFilterChange={handleStatusFilterChange}
           />
         )}
 

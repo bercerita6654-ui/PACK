@@ -47,6 +47,7 @@ import {
   generatePackingReportText,
 } from '../utils/notaDelay';
 import { getPlatformColor } from '../utils/platformDetector';
+import { SheetOrderListModal } from './SheetOrderListModal';
 
 interface BerandaSectionProps {
   accessToken: string | null;
@@ -110,6 +111,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
   const [sheetStatusFilter, setSheetStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
   const [sheetTimeframe, setSheetTimeframe] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>('today');
   const [copiedReport, setCopiedReport] = useState<boolean>(false);
+  const [activeModalType, setActiveModalType] = useState<'all' | 'pending' | 'overdue' | 'packed' | null>(null);
 
   // Fetch data from Google Sheets - cross-referencing "Nota Diproses" & "Packing Reg"
   const loadSheetData = useCallback(async () => {
@@ -514,9 +516,25 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
     }
   };
 
+  const sheetTimeframeLabel = useMemo(() => {
+    switch (sheetTimeframe) {
+      case 'today':
+        return 'Harian (Hari Ini)';
+      case 'yesterday':
+        return 'Hari Kemarin';
+      case 'week':
+        return 'Mingguan (Minggu Ini)';
+      case 'month':
+        return 'Bulanan (Bulan Ini)';
+      case 'all':
+      default:
+        return 'Semua Data';
+    }
+  }, [sheetTimeframe]);
+
   const handleCardClick = (filter: 'all' | 'pending' | 'overdue' | 'packed') => {
     setSheetStatusFilter(filter);
-    onNavigateToTab('sheet_history', filter);
+    setActiveModalType(filter);
   };
 
   const sheetUrl =
@@ -601,46 +619,18 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
-                  Status Packing (Data Google Sheets)
+                  Status Paket
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                   Tab: {sheetResolvedTab}
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 flex items-center gap-1">
-                  <span>↔ Cocok:</span>
-                  <strong className="font-mono text-white">{sheetResolvedPackingTab}</strong>
-                  {sheetTotalPackingInSheet > 0 && (
-                    <span className="ml-0.5 px-1.5 py-0.2 bg-indigo-400/30 rounded-full text-[10px] text-indigo-200">
-                      {sheetTotalPackingInSheet} paket
-                    </span>
-                  )}
-                </span>
-                {accessToken ? (
-                  <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Terhubung</span>
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700">
-                    <span className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span>Perlu Login</span>
-                  </span>
-                )}
               </div>
-              <p className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-1.5">
-                <span>
-                  Sinkronisasi otomatis dari sheet <strong>{sheetResolvedTab}</strong> dicocokkan langsung dengan data scan di sheet <strong>{sheetResolvedPackingTab}</strong>
-                </span>
-                {sheetLastFetchedAt && (
-                  <span className="text-slate-400">• Diperbarui: {sheetLastFetchedAt.toLocaleTimeString('id-ID')}</span>
-                )}
-              </p>
             </div>
           </div>
 
           {/* Action buttons at top dashboard */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Tombol Salin Report */}
+            {/* Tombol Salin Report Tunggal */}
             <button
               type="button"
               id="btn-copy-packing-report-top"
@@ -658,45 +648,6 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 <Copy className="w-3.5 h-3.5 text-emerald-100" />
               )}
               <span>{copiedReport ? 'Report Tersalin!' : 'Salin Report'}</span>
-            </button>
-
-            <button
-              type="button"
-              id="btn-refresh-sheet-top"
-              onClick={() => {
-                if (!accessToken) {
-                  onLoginGoogle();
-                } else {
-                  loadSheetData();
-                }
-              }}
-              disabled={sheetLoading}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-600/70 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
-              title="Segarkan data nota langsung dari Google Sheets"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${sheetLoading ? 'animate-spin' : ''}`} />
-              <span>{sheetLoading ? 'Memuat...' : 'Segarkan Data'}</span>
-            </button>
-
-            <a
-              href={sheetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-              title="Buka file Google Spreadsheet di tab baru"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Buka Google Sheets ↗</span>
-            </a>
-
-            <button
-              type="button"
-              id="btn-jump-to-sheet-table"
-              onClick={() => onNavigateToTab('sheet_history')}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
-              title="Buka menu riwayat tabel Google Sheets lengkap"
-            >
-              <span>Buka Tabel Riwayat →</span>
             </button>
           </div>
         </div>
@@ -819,38 +770,6 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               </span>
             </button>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              id="btn-copy-packing-report-bar"
-              onClick={handleCopyPackingReport}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer ${
-                copiedReport
-                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
-                  : 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-500/40 hover:border-emerald-400'
-              }`}
-              title="Salin report sesuai filter periode aktif"
-            >
-              {copiedReport ? (
-                <Check className="w-3.5 h-3.5 text-slate-950 stroke-[3]" />
-              ) : (
-                <Copy className="w-3.5 h-3.5 text-emerald-400" />
-              )}
-              <span>{copiedReport ? 'Report Tersalin!' : 'Salin Report'}</span>
-            </button>
-
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span>Menampilkan:</span>
-              <span className="font-extrabold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-500/30">
-                {sheetTimeframe === 'today' && 'Data Harian (Hari Ini)'}
-                {sheetTimeframe === 'yesterday' && 'Data Hari Kemarin'}
-                {sheetTimeframe === 'week' && 'Data Mingguan (Minggu Ini)'}
-                {sheetTimeframe === 'month' && 'Data Bulanan (Bulan Ini)'}
-                {sheetTimeframe === 'all' && 'Semua Riwayat Data'}
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* Dashboard 4 Core Stat Cards */}
@@ -864,7 +783,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 ? 'bg-amber-950/70 border-amber-400 ring-2 ring-amber-400/50'
                 : 'bg-amber-950/40 hover:bg-amber-950/60 border-amber-500/40'
             }`}
-            title="Klik untuk lihat daftar nota belum packing di tabel"
+            title="Klik untuk membuka pop-up daftar No. Pesanan belum packing"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-amber-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -883,8 +802,8 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             </div>
             <p className="text-[11px] text-amber-300/80 mt-2 flex items-center justify-between">
               <span>Menunggu dipacking</span>
-              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform">
-                Lihat Detail →
+              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform text-amber-200">
+                Daftar No Pesanan →
               </span>
             </p>
           </div>
@@ -898,7 +817,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 ? 'bg-emerald-950/70 border-emerald-400 ring-2 ring-emerald-400/50'
                 : 'bg-emerald-950/40 hover:bg-emerald-950/60 border-emerald-500/40'
             }`}
-            title="Klik untuk lihat daftar nota sudah packing di tabel"
+            title="Klik untuk membuka pop-up daftar No. Pesanan sudah packing"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-emerald-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -924,8 +843,8 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             </div>
             <p className="text-[11px] text-emerald-300/80 mt-2 flex items-center justify-between">
               <span>Telah selesai dipacking</span>
-              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform">
-                Lihat Detail →
+              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform text-emerald-200">
+                Daftar No Pesanan →
               </span>
             </p>
           </div>
@@ -941,7 +860,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 ? 'bg-rose-950/50 hover:bg-rose-950/70 border-rose-500/50'
                 : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700'
             }`}
-            title="Klik untuk memantau seluruh nota tertunda lintas tanggal"
+            title="Klik untuk membuka pop-up daftar No. Pesanan tertunda"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-rose-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -986,14 +905,14 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               <div className="flex items-center justify-between text-[11px] text-rose-200">
                 <span className="flex items-center gap-1 font-bold">
                   <Info className="w-3 h-3 text-rose-400 shrink-0" />
-                  <span>Akumulasi Pendingan Semua Data</span>
+                  <span>Akumulasi Pendingan</span>
                 </span>
                 <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform text-rose-300">
-                  Lihat Detail →
+                  Daftar No Pesanan →
                 </span>
               </div>
               <p className="text-[10px] text-rose-300/80 leading-tight">
-                Tetap memantau seluruh nota tertunda yang belum di-packing lintas tanggal agar tidak ada pesanan tertinggal.
+                Klik untuk melihat rincian No. Pesanan yang belum dipacking.
               </p>
             </div>
           </div>
@@ -1007,7 +926,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 ? 'bg-indigo-950/70 border-indigo-400 ring-2 ring-indigo-400/50'
                 : 'bg-slate-800/50 hover:bg-slate-800/80 border-slate-700'
             }`}
-            title="Klik untuk lihat semua nota periode aktif di tabel"
+            title="Klik untuk membuka pop-up daftar seluruh No. Pesanan pada periode ini"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-slate-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -1042,8 +961,8 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             </div>
             <p className="text-[11px] text-slate-400 mt-2 flex items-center justify-between">
               <span>Shopee: {sheetShopeeCount} • Tokped: {sheetTokpedCount}</span>
-              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform">
-                Lihat Detail →
+              <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform text-indigo-300">
+                Daftar No Pesanan →
               </span>
             </p>
           </div>
@@ -1246,6 +1165,24 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
           )}
         </div>
       </div>
+
+      {/* Pop-up List No Pesanan saat Kartu Status Diklik */}
+      {activeModalType && (
+        <SheetOrderListModal
+          isOpen={!!activeModalType}
+          onClose={() => setActiveModalType(null)}
+          type={activeModalType}
+          timeframe={sheetTimeframe}
+          timeframeLabel={sheetTimeframeLabel}
+          rows={dashboardFilteredSheetRows}
+          allSheetRows={sheetRows}
+          delayThreshold={delayThreshold}
+          onNavigateToSheetHistory={(filter) => {
+            onNavigateToTab('sheet_history', filter);
+          }}
+          showToast={showToast}
+        />
+      )}
     </section>
   );
 };

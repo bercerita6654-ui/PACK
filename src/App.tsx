@@ -1689,6 +1689,7 @@ export default function App() {
             csvUrl={csvUrl}
             showRekapTab={showRekapTab}
             initialFilter={sheetHistoryFilter}
+            onFilterChange={setSheetHistoryFilter}
           />
         )}
       </div>

@@ -158,10 +158,30 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<'Semua' | 'Shopee' | 'Tokopedia/TikTok'>('Semua');
   const [sourceTabFilter, setSourceTabFilter] = useState<'all' | 'nota' | 'packing'>('all');
-  const [internalStatusFilter, setInternalStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
-  const [internalTimeframe, setInternalTimeframe] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>('today');
+  const [internalStatusFilter, setInternalStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>(
+    selectedStatusFilter || 'all'
+  );
+  const [internalTimeframe, setInternalTimeframe] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>(
+    selectedTimeframe || 'all'
+  );
 
-  const statusFilter = selectedStatusFilter !== undefined ? selectedStatusFilter : internalStatusFilter;
+  // Sync internal state when selectedStatusFilter prop changes
+  useEffect(() => {
+    if (selectedStatusFilter !== undefined) {
+      setInternalStatusFilter(selectedStatusFilter);
+    }
+  }, [selectedStatusFilter]);
+
+  // Sync internal state when selectedTimeframe prop changes
+  useEffect(() => {
+    if (selectedTimeframe !== undefined) {
+      setInternalTimeframe(selectedTimeframe);
+    }
+  }, [selectedTimeframe]);
+
+  const isControlledFilter = selectedStatusFilter !== undefined && onStatusFilterChange !== undefined;
+  const statusFilter = isControlledFilter ? selectedStatusFilter : internalStatusFilter;
+
   const setStatusFilter = (val: 'all' | 'pending' | 'overdue' | 'packed') => {
     setInternalStatusFilter(val);
     if (onStatusFilterChange) {
@@ -169,7 +189,9 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     }
   };
 
-  const timeframe = selectedTimeframe !== undefined ? selectedTimeframe : internalTimeframe;
+  const isControlledTimeframe = selectedTimeframe !== undefined && onTimeframeChange !== undefined;
+  const timeframe = isControlledTimeframe ? selectedTimeframe : internalTimeframe;
+
   const setTimeframe = (val: 'today' | 'yesterday' | 'week' | 'month' | 'all') => {
     setInternalTimeframe(val);
     if (onTimeframeChange) {
@@ -801,10 +823,24 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
         <div className="p-4 sm:p-5 bg-slate-50/70 border-b border-slate-200">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {/* Total di Sheet */}
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
-              <span className="text-slate-500 block text-xs font-bold uppercase tracking-wider">
-                Total di Sheet
-              </span>
+            <div
+              id="card-sheet-total-summary"
+              onClick={() => setStatusFilter('all')}
+              className={`p-3.5 rounded-2xl border shadow-2xs cursor-pointer transition-all ${
+                statusFilter === 'all'
+                  ? 'bg-slate-100 border-slate-400 ring-2 ring-slate-300'
+                  : 'bg-white hover:bg-slate-50 border-slate-200'
+              }`}
+              title="Klik untuk memfilter semua nota di Google Sheet"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 block text-xs font-bold uppercase tracking-wider">
+                  Total di Sheet
+                </span>
+                <span className="px-1.5 py-0.2 bg-slate-200 text-slate-700 rounded text-[10px] font-extrabold">
+                  Semua
+                </span>
+              </div>
               <div className="flex items-baseline gap-1.5 mt-1">
                 <span className="text-2xl font-black text-slate-900">{totalInSheet}</span>
                 <span className="text-xs text-slate-500 font-medium">Nota</span>
@@ -868,31 +904,41 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
               </div>
             </div>
 
-            {/* Sync Status */}
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-center">
-              <span className="text-slate-500 block text-xs font-bold uppercase tracking-wider">
-                Status Sinkronisasi
-              </span>
-              <div className="flex items-center gap-1.5 mt-1 text-xs">
-                {accessToken ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                    <span className="font-bold text-emerald-700 truncate">
-                      {userEmail || 'Terhubung'}
-                    </span>
-                  </>
+            {/* Tertunda > 1 Hari di Sheet */}
+            <div
+              id="card-sheet-overdue-summary"
+              onClick={() => setStatusFilter('overdue')}
+              className={`p-3.5 rounded-2xl border shadow-2xs cursor-pointer transition-all ${
+                statusFilter === 'overdue'
+                  ? 'bg-rose-100 border-rose-400 ring-2 ring-rose-300'
+                  : overdueInSheet > 0
+                  ? 'bg-rose-50/80 hover:bg-rose-100/70 border-rose-200'
+                  : 'bg-white hover:bg-rose-50/50 border-slate-200'
+              }`}
+              title="Klik untuk memfilter nota pending > 1 hari (belum packing)"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-rose-800 block text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span>Tertunda &gt; 1 Hari</span>
+                </span>
+                {overdueInSheet > 0 ? (
+                  <span className="px-1.5 py-0.2 bg-rose-200 text-rose-900 rounded text-[10px] font-extrabold animate-pulse">
+                    Perlu Cek
+                  </span>
                 ) : (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                    <span className="font-bold text-amber-700">Perlu Login Google</span>
-                  </>
+                  <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold">
+                    Aman
+                  </span>
                 )}
               </div>
-              {lastFetchedAt && (
-                <span className="text-[10px] text-slate-400 mt-0.5 truncate">
-                  Update: {lastFetchedAt.toLocaleTimeString('id-ID')}
-                </span>
-              )}
+              <div className="flex items-baseline gap-1.5 mt-1">
+                <span className="text-2xl font-black text-rose-700">{overdueInSheet}</span>
+                <span className="text-xs text-rose-700 font-medium">Nota</span>
+              </div>
+              <div className="text-[10px] text-rose-600 mt-0.5">
+                {overdueInSheet > 0 ? 'Klik untuk filter nota tertunda' : 'Semua nota tertangani tepat waktu'}
+              </div>
             </div>
           </div>
         </div>
@@ -953,7 +999,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                 type="button"
                 id="btn-sheet-history-timeframe-today"
                 onClick={() => setTimeframe('today')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   timeframe === 'today'
                     ? 'bg-indigo-600 text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900'
@@ -965,7 +1011,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                 type="button"
                 id="btn-sheet-history-timeframe-yesterday"
                 onClick={() => setTimeframe('yesterday')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   timeframe === 'yesterday'
                     ? 'bg-indigo-600 text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900'
@@ -977,7 +1023,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                 type="button"
                 id="btn-sheet-history-timeframe-week"
                 onClick={() => setTimeframe('week')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   timeframe === 'week'
                     ? 'bg-indigo-600 text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900'
@@ -989,7 +1035,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                 type="button"
                 id="btn-sheet-history-timeframe-month"
                 onClick={() => setTimeframe('month')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   timeframe === 'month'
                     ? 'bg-indigo-600 text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900'
@@ -1001,7 +1047,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                 type="button"
                 id="btn-sheet-history-timeframe-all"
                 onClick={() => setTimeframe('all')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   timeframe === 'all'
                     ? 'bg-indigo-600 text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900'
@@ -1195,22 +1241,24 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
             <div className="inline-flex bg-slate-200/70 p-0.5 rounded-xl text-xs font-bold">
               <button
                 type="button"
+                id="filter-sheet-status-all"
                 onClick={() => setStatusFilter('all')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   statusFilter === 'all'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-slate-900 shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
                 }`}
               >
                 Semua ({totalInSheet})
               </button>
               <button
                 type="button"
+                id="filter-sheet-status-pending"
                 onClick={() => setStatusFilter('pending')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   statusFilter === 'pending'
-                    ? 'bg-amber-600 text-white shadow-2xs'
-                    : 'text-amber-800 hover:text-amber-900'
+                    ? 'bg-amber-600 text-white shadow-2xs font-black'
+                    : 'text-amber-800 hover:text-amber-900 hover:bg-amber-100/50'
                 }`}
               >
                 Belum Packing ({pendingInSheet})
@@ -1218,11 +1266,12 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
               {overdueInSheet > 0 && (
                 <button
                   type="button"
+                  id="filter-sheet-status-overdue"
                   onClick={() => setStatusFilter('overdue')}
-                  className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 ${
+                  className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
                     statusFilter === 'overdue'
-                      ? 'bg-rose-600 text-white shadow-2xs'
-                      : 'text-rose-700 hover:text-rose-900 bg-rose-50/80'
+                      ? 'bg-rose-600 text-white shadow-2xs font-black'
+                      : 'text-rose-700 hover:text-rose-900 bg-rose-50/80 hover:bg-rose-100/60'
                   }`}
                   title={`Nota pending lebih dari ${formatThresholdLabel(effectiveThreshold)}`}
                 >
@@ -1232,11 +1281,12 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
               )}
               <button
                 type="button"
+                id="filter-sheet-status-packed"
                 onClick={() => setStatusFilter('packed')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   statusFilter === 'packed'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'text-emerald-800 hover:text-emerald-900'
+                    ? 'bg-emerald-600 text-white shadow-2xs font-black'
+                    : 'text-emerald-800 hover:text-emerald-900 hover:bg-emerald-100/50'
                 }`}
               >
                 Sudah Packing ({packedInSheet})
