@@ -32,6 +32,7 @@ import {
   appendDailyRekapRow,
   appendPackingOrders,
   appendProcessedNotas,
+  markOrdersAsPackedInSpreadsheet,
 } from './services/googleWorkspace';
 import {
   DEFAULT_GOOGLE_SHEET_WEB_APP_URL,
@@ -522,6 +523,87 @@ export default function App() {
   const handleTokenExpired = () => {
     invalidateStoredToken();
     setAccessToken(null);
+  };
+
+  // Handler to mark orders as packed directly from modals / lists and sync to Google Sheet
+  const handleMarkOrdersAsPacked = async (
+    items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
+  ) => {
+    if (!items || items.length === 0) return { success: true, count: 0 };
+
+    const timeStr = new Date().toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    const orderSet = new Set(items.map((i) => i.orderNumber.toUpperCase()));
+
+    // 1. Update local processedNotas if any matching orders are in local memory
+    setProcessedNotas((prev) =>
+      prev.map((nota) => {
+        if (orderSet.has(nota.orderNumber.toUpperCase())) {
+          return {
+            ...nota,
+            isPacked: true,
+            packingTime: timeStr,
+          };
+        }
+        return nota;
+      })
+    );
+
+    // 2. Also record them in packedOrders so local scanner recognizes them as packed
+    setPackedOrders((prev) => {
+      const existing = new Set(prev.map((p) => p.orderNumber.toUpperCase()));
+      const newPacked: PackedOrder[] = [];
+      items.forEach((item) => {
+        if (!existing.has(item.orderNumber.toUpperCase())) {
+          newPacked.push({
+            id: `manual-pack-${Date.now()}-${item.orderNumber}`,
+            orderNumber: item.orderNumber,
+            platform: item.platform,
+            timestamp: timeStr,
+            date: new Date().toISOString().slice(0, 10),
+          });
+        }
+      });
+      return [...newPacked, ...prev];
+    });
+
+    // 3. If user is authenticated with Google Sheets, sync to Google Sheet directly!
+    let activeToken = accessToken;
+    if (!activeToken) {
+      try {
+        activeToken = await refreshGoogleToken();
+        if (activeToken) setAccessToken(activeToken);
+      } catch {
+        // Local state updated
+      }
+    }
+
+    if (activeToken) {
+      try {
+        const res = await markOrdersAsPackedInSpreadsheet(
+          activeToken,
+          TARGET_PACKING_SPREADSHEET_ID,
+          items,
+          TARGET_PACKING_SHEET_TAB,
+          TARGET_NOTA_SHEET_TAB
+        );
+        setLastPackingSyncTime(Date.now());
+        setLastNotaSyncTime(Date.now());
+        return res;
+      } catch (err: any) {
+        console.error('Error updating packing status in spreadsheet:', err);
+        if (isAuthExpiredError(err)) {
+          invalidateStoredToken();
+          handleTokenExpired();
+        }
+        throw err;
+      }
+    }
+
+    return { success: true, count: items.length };
   };
 
   // Sync to localStorage
@@ -1627,6 +1709,7 @@ export default function App() {
                 activeSpreadsheet={activeSpreadsheet}
                 showRekapTab={showRekapTab}
                 rekapTotalCount={appData.counts.JNE + appData.counts.JNT + appData.counts.SPX + appData.counts.IDX}
+                onMarkOrdersAsPacked={handleMarkOrdersAsPacked}
               />
             </motion.div>
           )}

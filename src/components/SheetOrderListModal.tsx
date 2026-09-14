@@ -11,11 +11,16 @@ import {
   ExternalLink,
   ArrowRight,
   Filter,
+  PackageCheck,
+  CheckSquare,
+  Square,
+  Loader2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SheetProcessedNotaRow, PlatformType, ToastItem } from '../types';
 import { getPlatformColor } from '../utils/platformDetector';
 import { parseNotaDateTime, formatElapsedDuration, formatThresholdLabel } from '../utils/notaDelay';
+import { soundFX } from '../utils/audio';
 
 export interface SheetOrderListModalProps {
   isOpen: boolean;
@@ -28,6 +33,9 @@ export interface SheetOrderListModalProps {
   delayThreshold: number;
   onNavigateToSheetHistory?: (filter: 'all' | 'pending' | 'overdue' | 'packed') => void;
   showToast: (msg: string, type?: ToastItem['type']) => void;
+  onMarkOrdersAsPacked?: (
+    items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
+  ) => Promise<any> | void;
 }
 
 export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
@@ -41,12 +49,21 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
   delayThreshold,
   onNavigateToSheetHistory,
   showToast,
+  onMarkOrdersAsPacked,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<'ALL' | PlatformType>('ALL');
   const [copiedAll, setCopiedAll] = useState<boolean>(false);
   const [copiedSingleIndex, setCopiedSingleIndex] = useState<string | null>(null);
   const [overdueScope, setOverdueScope] = useState<'period' | 'all'>('all');
+
+  // Track orders marked as packed during this modal session
+  const [locallyPackedOrders, setLocallyPackedOrders] = useState<Set<string>>(new Set());
+  // Track individual orders being processed (loading state)
+  const [processingOrders, setProcessingOrders] = useState<Set<string>>(new Set());
+  // Multi-select for batch marking
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [isBatchProcessing, setIsBatchProcessing] = useState<boolean>(false);
 
   const nowMs = Date.now();
 
@@ -58,21 +75,26 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       }
       setSearchQuery('');
       setPlatformFilter('ALL');
+      setSelectedOrders(new Set());
     }
   }, [isOpen, type]);
+
+  const isOrderPacked = (row: SheetProcessedNotaRow) => {
+    return row.isPacked || locallyPackedOrders.has(row.orderNumber.toUpperCase());
+  };
 
   // Determine base rows based on type
   const baseRows = useMemo(() => {
     if (type === 'pending') {
-      return rows.filter((r) => !r.isPacked);
+      return rows.filter((r) => !r.isPacked || locallyPackedOrders.has(r.orderNumber.toUpperCase()));
     }
     if (type === 'packed') {
-      return rows.filter((r) => r.isPacked);
+      return rows.filter((r) => r.isPacked || locallyPackedOrders.has(r.orderNumber.toUpperCase()));
     }
     if (type === 'overdue') {
       const source = overdueScope === 'all' || timeframe === 'all' ? allSheetRows : rows;
       return source.filter((r) => {
-        if (r.isPacked) return false;
+        if (r.isPacked && !locallyPackedOrders.has(r.orderNumber.toUpperCase())) return false;
         const d = parseNotaDateTime(r.adminDate, r.adminTime);
         if (!d) return false;
         const elapsed = Math.floor((nowMs - d.getTime()) / 60000);
@@ -81,7 +103,7 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
     }
     // type === 'all'
     return rows;
-  }, [type, rows, allSheetRows, overdueScope, timeframe, nowMs, delayThreshold]);
+  }, [type, rows, allSheetRows, overdueScope, timeframe, nowMs, delayThreshold, locallyPackedOrders]);
 
   // Filter by search query and platform
   const filteredRows = useMemo(() => {
@@ -110,21 +132,173 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
   // Hitungan cepat overdue untuk tombol toggle
   const periodOverdueCount = useMemo(() => {
     return rows.filter((r) => {
-      if (r.isPacked) return false;
+      if (r.isPacked && !locallyPackedOrders.has(r.orderNumber.toUpperCase())) return false;
       const d = parseNotaDateTime(r.adminDate, r.adminTime);
       if (!d) return false;
       return Math.floor((nowMs - d.getTime()) / 60000) >= delayThreshold;
     }).length;
-  }, [rows, nowMs, delayThreshold]);
+  }, [rows, nowMs, delayThreshold, locallyPackedOrders]);
 
   const allOverdueCount = useMemo(() => {
     return allSheetRows.filter((r) => {
-      if (r.isPacked) return false;
+      if (r.isPacked && !locallyPackedOrders.has(r.orderNumber.toUpperCase())) return false;
       const d = parseNotaDateTime(r.adminDate, r.adminTime);
       if (!d) return false;
       return Math.floor((nowMs - d.getTime()) / 60000) >= delayThreshold;
     }).length;
-  }, [allSheetRows, nowMs, delayThreshold]);
+  }, [allSheetRows, nowMs, delayThreshold, locallyPackedOrders]);
+
+  // Mark single order as packed
+  const handleMarkSingleAsPacked = async (row: SheetProcessedNotaRow) => {
+    const upper = row.orderNumber.toUpperCase();
+    if (processingOrders.has(upper) || isBatchProcessing) return;
+
+    setProcessingOrders((prev) => new Set(prev).add(upper));
+    setLocallyPackedOrders((prev) => new Set(prev).add(upper));
+
+    // Deselect if selected
+    setSelectedOrders((prev) => {
+      const next = new Set(prev);
+      next.delete(upper);
+      return next;
+    });
+
+    try {
+      if (onMarkOrdersAsPacked) {
+        await onMarkOrdersAsPacked([
+          {
+            orderNumber: row.orderNumber,
+            platform: row.platform,
+            rowNumber: row.rowNumber,
+            adminDate: row.adminDate,
+          },
+        ]);
+      } else {
+        soundFX.playSuccess();
+        showToast(`✓ No. Pesanan ${row.orderNumber} berhasil diubah jadi Terpacking!`, 'success');
+      }
+    } catch (err: any) {
+      showToast(`Gagal merubah status: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setProcessingOrders((prev) => {
+        const next = new Set(prev);
+        next.delete(upper);
+        return next;
+      });
+    }
+  };
+
+  // Mark all selected orders as packed
+  const handleMarkSelectedAsPacked = async () => {
+    if (selectedOrders.size === 0 || isBatchProcessing) return;
+
+    const itemsToPack = filteredRows
+      .filter((r) => selectedOrders.has(r.orderNumber.toUpperCase()) && !isOrderPacked(r))
+      .map((r) => ({
+        orderNumber: r.orderNumber,
+        platform: r.platform,
+        rowNumber: r.rowNumber,
+        adminDate: r.adminDate,
+      }));
+
+    if (itemsToPack.length === 0) return;
+
+    setIsBatchProcessing(true);
+    const upperList = itemsToPack.map((i) => i.orderNumber.toUpperCase());
+    setLocallyPackedOrders((prev) => {
+      const next = new Set(prev);
+      upperList.forEach((o) => next.add(o));
+      return next;
+    });
+
+    try {
+      if (onMarkOrdersAsPacked) {
+        await onMarkOrdersAsPacked(itemsToPack);
+      } else {
+        soundFX.playBatchSuccess();
+        showToast(`✓ ${itemsToPack.length} No. Pesanan berhasil diubah jadi Terpacking!`, 'success');
+      }
+      setSelectedOrders(new Set());
+    } catch (err: any) {
+      showToast(`Gagal merubah status: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  // Mark all visible unpacked orders as packed
+  const handleMarkAllVisibleAsPacked = async () => {
+    const itemsToPack = filteredRows
+      .filter((r) => !isOrderPacked(r))
+      .map((r) => ({
+        orderNumber: r.orderNumber,
+        platform: r.platform,
+        rowNumber: r.rowNumber,
+        adminDate: r.adminDate,
+      }));
+
+    if (itemsToPack.length === 0 || isBatchProcessing) return;
+
+    setIsBatchProcessing(true);
+    const upperList = itemsToPack.map((i) => i.orderNumber.toUpperCase());
+    setLocallyPackedOrders((prev) => {
+      const next = new Set(prev);
+      upperList.forEach((o) => next.add(o));
+      return next;
+    });
+
+    try {
+      if (onMarkOrdersAsPacked) {
+        await onMarkOrdersAsPacked(itemsToPack);
+      } else {
+        soundFX.playBatchSuccess();
+        showToast(`✓ Semua ${itemsToPack.length} No. Pesanan berhasil diubah jadi Terpacking!`, 'success');
+      }
+      setSelectedOrders(new Set());
+    } catch (err: any) {
+      showToast(`Gagal merubah status: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  // Selection helpers
+  const visibleUnpackedOrders = useMemo(() => {
+    return filteredRows
+      .filter((r) => !isOrderPacked(r))
+      .map((r) => r.orderNumber.toUpperCase());
+  }, [filteredRows, locallyPackedOrders]);
+
+  const unpackedInFilteredCount = visibleUnpackedOrders.length;
+
+  const isAllVisibleSelected =
+    visibleUnpackedOrders.length > 0 &&
+    visibleUnpackedOrders.every((o) => selectedOrders.has(o));
+
+  const toggleSelectAll = () => {
+    if (isAllVisibleSelected) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(visibleUnpackedOrders));
+    }
+  };
+
+  const toggleSelectOrder = (orderNumber: string) => {
+    const upper = orderNumber.toUpperCase();
+    setSelectedOrders((prev) => {
+      const next = new Set(prev);
+      if (next.has(upper)) {
+        next.delete(upper);
+      } else {
+        next.add(upper);
+      }
+      return next;
+    });
+  };
+
+  const recentlyPackedCount = useMemo(() => {
+    return filteredRows.filter((r) => locallyPackedOrders.has(r.orderNumber.toUpperCase())).length;
+  }, [filteredRows, locallyPackedOrders]);
 
   // Copy all visible order numbers to clipboard
   const handleCopyAllOrders = async () => {
@@ -279,83 +453,151 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
             </div>
           )}
 
-          {/* Controls Bar: Search, Platform filter & Copy All button */}
-          <div className="p-3 sm:p-4 border-b border-slate-200 bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            {/* Search Input */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                id="input-search-modal-orders"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari No. Pesanan, tanggal, jam..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-              />
-              {searchQuery && (
+          {/* Controls Bar: Search, Platform filter, Batch Pack & Copy All button */}
+          <div className="p-3 sm:p-4 border-b border-slate-200 bg-white flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              {/* Search Input */}
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  id="input-search-modal-orders"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Cari No. Pesanan, tanggal, jam..."
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Platform Filter Buttons */}
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl shrink-0">
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  onClick={() => setPlatformFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    platformFilter === 'ALL'
+                      ? 'bg-white text-slate-900 shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  ✕
+                  Semua ({baseRows.length})
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setPlatformFilter('Shopee')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    platformFilter === 'Shopee'
+                      ? 'bg-orange-500 text-white shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-orange-600'
+                  }`}
+                >
+                  Shopee ({shopeeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlatformFilter('Tokopedia/TikTok')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    platformFilter === 'Tokopedia/TikTok'
+                      ? 'bg-emerald-600 text-white shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-emerald-700'
+                  }`}
+                >
+                  Tokopedia ({tokpedCount})
+                </button>
+              </div>
+
+              {/* Action Buttons Group */}
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Batch Pack All Visible Unpacked Button */}
+                {unpackedInFilteredCount > 0 && (
+                  <button
+                    type="button"
+                    id="btn-mark-all-visible-packed"
+                    onClick={handleMarkAllVisibleAsPacked}
+                    disabled={isBatchProcessing}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white disabled:opacity-50"
+                    title="Ubah semua pesanan yang belum packing pada daftar ini jadi Terpacking sekaligus"
+                  >
+                    {isBatchProcessing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <PackageCheck className="w-3.5 h-3.5" />
+                    )}
+                    <span>Jadikan Semua Terpacking ({unpackedInFilteredCount})</span>
+                  </button>
+                )}
+
+                {/* Copy All Orders Button */}
+                <button
+                  type="button"
+                  id="btn-copy-all-orders-modal"
+                  onClick={handleCopyAllOrders}
+                  disabled={filteredRows.length === 0}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer disabled:opacity-40 ${
+                    copiedAll
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
+                  }`}
+                  title="Salin seluruh No. Pesanan yang ditampilkan ke clipboard (per baris)"
+                >
+                  {copiedAll ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedAll ? 'Tersalin!' : 'Salin Semua No Pesanan'}</span>
+                </button>
+              </div>
             </div>
 
-            {/* Platform Filter Buttons */}
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl shrink-0">
-              <button
-                type="button"
-                onClick={() => setPlatformFilter('ALL')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  platformFilter === 'ALL'
-                    ? 'bg-white text-slate-900 shadow-2xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Semua ({baseRows.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setPlatformFilter('Shopee')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  platformFilter === 'Shopee'
-                    ? 'bg-orange-500 text-white shadow-2xs font-black'
-                    : 'text-slate-600 hover:text-orange-600'
-                }`}
-              >
-                Shopee ({shopeeCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setPlatformFilter('Tokopedia/TikTok')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  platformFilter === 'Tokopedia/TikTok'
-                    ? 'bg-emerald-600 text-white shadow-2xs font-black'
-                    : 'text-slate-600 hover:text-emerald-700'
-                }`}
-              >
-                Tokopedia ({tokpedCount})
-              </button>
-            </div>
+            {/* Multi-Selection Action Bar */}
+            {selectedOrders.size > 0 && (
+              <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs animate-fadeIn">
+                <div className="flex items-center gap-2 text-emerald-950 font-bold">
+                  <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{selectedOrders.size} No. Pesanan dipilih</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrders(new Set())}
+                    className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-lg transition-all cursor-pointer"
+                  >
+                    Batal Pilih
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMarkSelectedAsPacked}
+                    disabled={isBatchProcessing}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isBatchProcessing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    )}
+                    <span>Tandai Terpilih Jadi Terpacking ({selectedOrders.size})</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
-            {/* Copy All Orders Button */}
-            <button
-              type="button"
-              id="btn-copy-all-orders-modal"
-              onClick={handleCopyAllOrders}
-              disabled={filteredRows.length === 0}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer disabled:opacity-40 ${
-                copiedAll
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white'
-              }`}
-              title="Salin seluruh No. Pesanan yang ditampilkan ke clipboard (per baris)"
-            >
-              {copiedAll ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedAll ? 'Tersalin!' : 'Salin Semua No Pesanan'}</span>
-            </button>
+            {/* Recently Packed Notification Bar */}
+            {recentlyPackedCount > 0 && (
+              <div className="px-3 py-1.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center justify-between gap-2 text-[11px] text-emerald-900">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>
+                    <strong>{recentlyPackedCount} No. Pesanan</strong> berhasil diubah jadi Terpacking pada sesi ini tanpa perlu scan barcode.
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* List Table Area */}
@@ -379,23 +621,38 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                      <th className="py-2.5 px-3.5 w-12 text-center">No</th>
+                      <th className="py-2.5 px-3 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isAllVisibleSelected}
+                          onChange={toggleSelectAll}
+                          disabled={visibleUnpackedOrders.length === 0}
+                          title={isAllVisibleSelected ? "Batal pilih semua" : "Pilih semua pesanan yang belum packing"}
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer disabled:opacity-40"
+                        />
+                      </th>
+                      <th className="py-2.5 px-2.5 w-12 text-center">No</th>
                       <th className="py-2.5 px-3.5">No Pesanan</th>
-                      <th className="py-2.5 px-3.5 w-32">Platform</th>
+                      <th className="py-2.5 px-3.5 w-28">Platform</th>
                       <th className="py-2.5 px-3.5 w-36">Tanggal / Waktu Admin</th>
-                      <th className="py-2.5 px-3.5 w-40">Status Packing</th>
-                      <th className="py-2.5 px-3.5 w-16 text-center">Salin</th>
+                      <th className="py-2.5 px-3.5 w-36">Status Packing</th>
+                      <th className="py-2.5 px-3.5 w-52 text-center">Ubah Status / Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200/80 bg-white">
                     {filteredRows.map((row, idx) => {
+                      const upper = row.orderNumber.toUpperCase();
                       const platformColor = getPlatformColor(row.platform);
                       const isCopiedThis = copiedSingleIndex === row.orderNumber;
+                      const isPacked = isOrderPacked(row);
+                      const isLocallyPacked = locallyPackedOrders.has(upper);
+                      const isProcessing = processingOrders.has(upper);
+                      const isSelected = selectedOrders.has(upper);
 
                       // Calculate overdue
                       let isOverdue = false;
                       let elapsedMinutes = 0;
-                      if (!row.isPacked) {
+                      if (!isPacked) {
                         const d = parseNotaDateTime(row.adminDate, row.adminTime);
                         if (d) {
                           elapsedMinutes = Math.floor((nowMs - d.getTime()) / 60000);
@@ -407,11 +664,27 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                         <tr
                           key={`${row.orderNumber}-${idx}`}
                           className={`hover:bg-slate-50/80 transition-colors ${
-                            isOverdue ? 'bg-rose-50/30' : ''
+                            isLocallyPacked
+                              ? 'bg-emerald-50/40'
+                              : isOverdue
+                              ? 'bg-rose-50/30'
+                              : ''
                           }`}
                         >
+                          {/* Multi-Select Checkbox */}
+                          <td className="py-2.5 px-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelectOrder(row.orderNumber)}
+                              disabled={isPacked}
+                              title={isPacked ? "Pesanan sudah terpacking" : "Pilih pesanan ini"}
+                              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer disabled:opacity-30"
+                            />
+                          </td>
+
                           {/* Index */}
-                          <td className="py-2.5 px-3.5 text-center text-slate-400 font-mono font-semibold">
+                          <td className="py-2.5 px-2.5 text-center text-slate-400 font-mono font-semibold">
                             {idx + 1}
                           </td>
 
@@ -450,17 +723,21 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
 
                           {/* Status */}
                           <td className="py-2.5 px-3.5">
-                            {row.isPacked ? (
+                            {isPacked ? (
                               <div className="flex flex-col items-start gap-0.5">
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
                                   Sudah Packing
                                 </span>
-                                {row.packingTime && row.packingTime !== '-' && (
+                                {isLocallyPacked ? (
+                                  <span className="text-[10px] text-emerald-600 font-semibold pl-0.5">
+                                    Baru saja diubah
+                                  </span>
+                                ) : row.packingTime && row.packingTime !== '-' ? (
                                   <span className="text-[10px] text-slate-400 pl-0.5">
                                     Pukul: {row.packingTime}
                                   </span>
-                                )}
+                                ) : null}
                               </div>
                             ) : isOverdue ? (
                               <div className="flex flex-col items-start gap-0.5">
@@ -480,20 +757,46 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                             )}
                           </td>
 
-                          {/* Single Copy Action */}
+                          {/* Ubah Status & Copy Action */}
                           <td className="py-2.5 px-3.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleCopySingle(row.orderNumber)}
-                              className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
-                                isCopiedThis
-                                  ? 'bg-emerald-500 text-white border-emerald-600'
-                                  : 'bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-900 border-slate-200'
-                              }`}
-                              title="Salin No Pesanan ini"
-                            >
-                              {isCopiedThis ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              {isPacked ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Terpacking</span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  id={`btn-mark-packed-${idx}`}
+                                  onClick={() => handleMarkSingleAsPacked(row)}
+                                  disabled={isProcessing || isBatchProcessing}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                                  title="Ubah status jadi Terpacking tanpa perlu ketik kode / ke menu scan"
+                                >
+                                  {isProcessing ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>Jadikan Terpacking</span>
+                                </button>
+                              )}
+
+                              {/* Single Copy Action */}
+                              <button
+                                type="button"
+                                onClick={() => handleCopySingle(row.orderNumber)}
+                                className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                                  isCopiedThis
+                                    ? 'bg-emerald-500 text-white border-emerald-600'
+                                    : 'bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-900 border-slate-200'
+                                }`}
+                                title="Salin No Pesanan ini"
+                              >
+                                {isCopiedThis ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -506,13 +809,18 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
 
           {/* Footer */}
           <div className="p-3.5 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="text-xs text-slate-500 flex items-center gap-2">
+            <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2">
               <span>
                 Total: <strong className="text-slate-800">{filteredRows.length} No. Pesanan</strong>
               </span>
               {filteredRows.length > 0 && (
                 <span className="text-slate-400">
                   (Shopee: {filteredRows.filter(r => r.platform === 'Shopee').length}, Tokopedia: {filteredRows.filter(r => r.platform === 'Tokopedia/TikTok').length})
+                </span>
+              )}
+              {recentlyPackedCount > 0 && (
+                <span className="text-emerald-700 font-bold bg-emerald-100/70 px-2 py-0.5 rounded-md border border-emerald-200">
+                  • {recentlyPackedCount} Baru Saja Ditandai Terpacking
                 </span>
               )}
             </div>

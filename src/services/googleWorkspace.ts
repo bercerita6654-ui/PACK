@@ -1,7 +1,7 @@
 export { isAuthExpiredError, invalidateStoredToken } from './googleAuth';
 import { isAuthExpiredError } from './googleAuth';
 import { normalizeOrderNumber, PackingRegRecord } from '../utils/notaDelay';
-import { SyncProgressInfo } from '../types';
+import { SyncProgressInfo, PlatformType } from '../types';
 
 export interface DriveSpreadsheetItem {
   id: string;
@@ -983,4 +983,87 @@ export async function appendProcessedNotas(
     targetSheet,
   };
 }
+
+/**
+ * Mark orders as packed in Google Sheets:
+ * 1. Appends packing scan entries to the packing sheet tab (e.g. "Packing Reg")
+ * 2. Updates the Status Packing (Col F) & Waktu Packing (Col G) in the Nota Diproses tab if rowNumber is known
+ */
+export async function markOrdersAsPackedInSpreadsheet(
+  accessToken: string,
+  spreadsheetId: string,
+  orders: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[],
+  packingTab: string = 'Packing Reg',
+  notaTab: string = 'Nota Diproses'
+): Promise<{ addedToPacking: number; updatedInNota: number }> {
+  if (!orders || orders.length === 0) {
+    return { addedToPacking: 0, updatedInNota: 0 };
+  }
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).replace(/\//g, '/');
+  const timeStr = now.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  // 1. Append to Packing sheet tab
+  const packingRows = orders.map((o, idx) => [
+    idx + 1,
+    o.orderNumber,
+    o.platform,
+    o.adminDate || dateStr,
+    timeStr,
+    'Selesai Packing',
+  ]);
+
+  let addedToPacking = 0;
+  try {
+    const res = await appendPackingOrders(accessToken, spreadsheetId, packingRows, packingTab);
+    addedToPacking = res.added;
+  } catch (err) {
+    console.warn('Could not append to packing tab:', err);
+  }
+
+  // 2. Batch update Status in Nota tab if rowNumber is known
+  let updatedInNota = 0;
+  const rowsToUpdate = orders.filter((o) => o.rowNumber && o.rowNumber > 1);
+  if (rowsToUpdate.length > 0) {
+    try {
+      const dataPayload = rowsToUpdate.map((o) => ({
+        range: `'${notaTab}'!F${o.rowNumber}:G${o.rowNumber}`,
+        values: [['Selesai Packing', timeStr]],
+      }));
+
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
+      const updateRes = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          valueInputOption: 'USER_ENTERED',
+          data: dataPayload,
+        }),
+      });
+
+      if (updateRes.ok) {
+        updatedInNota = rowsToUpdate.length;
+      } else {
+        console.warn('Failed batch updating nota status:', await updateRes.text());
+      }
+    } catch (err) {
+      console.warn('Could not update status in Nota Diproses tab:', err);
+    }
+  }
+
+  return { addedToPacking, updatedInNota };
+}
+
 

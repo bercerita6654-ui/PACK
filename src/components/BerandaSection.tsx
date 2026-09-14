@@ -63,6 +63,9 @@ interface BerandaSectionProps {
   activeSpreadsheet: ActiveSpreadsheet | null;
   showRekapTab?: boolean;
   rekapTotalCount?: number;
+  onMarkOrdersAsPacked?: (
+    items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
+  ) => Promise<{ success: boolean; count: number }> | Promise<any> | void;
 }
 
 export const BerandaSection: React.FC<BerandaSectionProps> = ({
@@ -82,6 +85,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
   activeSpreadsheet,
   showRekapTab = false,
   rekapTotalCount = 0,
+  onMarkOrdersAsPacked,
 }) => {
   // Clock tick state to update relative elapsed times periodically
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
@@ -365,6 +369,39 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
       loadSheetData();
     }
   }, [accessToken, lastSyncTimestamp, loadSheetData]);
+
+  // Handler to mark orders as packed directly from SheetOrderListModal
+  const handleMarkOrdersAsPackedFromModal = async (
+    items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
+  ) => {
+    const timeStr = new Date().toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    const orderSet = new Set(items.map((i) => i.orderNumber.toUpperCase()));
+
+    // Optimistically update sheetRows immediately in local state
+    setSheetRows((prev) =>
+      prev.map((row) => {
+        if (orderSet.has(row.orderNumber.toUpperCase())) {
+          return {
+            ...row,
+            isPacked: true,
+            packingStatus: 'Sudah Packing',
+            packingTime: timeStr,
+            matchedSource: 'packing_reg_sheet',
+          };
+        }
+        return row;
+      })
+    );
+
+    if (onMarkOrdersAsPacked) {
+      const res = await onMarkOrdersAsPacked(items);
+      return res;
+    }
+  };
 
   // Filtered rows for the top dashboard based on timeframe
   const dashboardFilteredSheetRows = useMemo(() => {
@@ -1045,6 +1082,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             onNavigateToTab('sheet_history', filter);
           }}
           showToast={showToast}
+          onMarkOrdersAsPacked={handleMarkOrdersAsPackedFromModal}
         />
       )}
     </section>
