@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   FileSpreadsheet,
   RefreshCw,
@@ -391,6 +391,59 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
     }
   }, [accessToken, lastSyncTimestamp, loadSheetData]);
 
+  // 5-minute auto-refresh cycle (300 seconds)
+  const REFRESH_INTERVAL_SECONDS = 300;
+  const [countdown, setCountdown] = useState<number>(REFRESH_INTERVAL_SECONDS);
+
+  const sheetLoadingRef = useRef(sheetLoading);
+  useEffect(() => {
+    sheetLoadingRef.current = sheetLoading;
+  }, [sheetLoading]);
+
+  const loadSheetDataRef = useRef(loadSheetData);
+  useEffect(() => {
+    loadSheetDataRef.current = loadSheetData;
+  }, [loadSheetData]);
+
+  // Reset countdown on manual or background sync
+  useEffect(() => {
+    setCountdown(REFRESH_INTERVAL_SECONDS);
+  }, [lastSyncTimestamp]);
+
+  // Auto-refresh interval every 5 minutes
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          if (!sheetLoadingRef.current) {
+            loadSheetDataRef.current();
+          }
+          return REFRESH_INTERVAL_SECONDS;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [accessToken]);
+
+  const handleManualRefresh = () => {
+    if (!accessToken) {
+      onLoginGoogle();
+    } else {
+      setCountdown(REFRESH_INTERVAL_SECONDS);
+      loadSheetData();
+    }
+  };
+
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
   // Handler to mark orders as packed directly from SheetOrderListModal
   const handleMarkOrdersAsPackedFromModal = async (
     items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
@@ -646,6 +699,11 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                   Tab: {sheetResolvedTab}
                 </span>
+                {sheetLastFetchedAt && (
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Diperbarui {sheetLastFetchedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -656,19 +714,22 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             <button
               type="button"
               id="btn-beranda-refresh-data"
-              onClick={() => {
-                if (!accessToken) {
-                  onLoginGoogle();
-                } else {
-                  loadSheetData();
-                }
-              }}
+              onClick={handleManualRefresh}
               disabled={sheetLoading}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-slate-200 hover:text-white disabled:opacity-50 cursor-pointer shadow-xs"
-              title="Segarkan data terbaru dari Google Sheets"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-slate-200 hover:text-white disabled:opacity-50 cursor-pointer shadow-xs"
+              title="Segarkan data terbaru dari Google Sheets (Otomatis setiap 5 menit)"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${sheetLoading ? 'animate-spin' : ''}`} />
               <span>{sheetLoading ? 'Menyinkron...' : 'Segarkan Google Sheets'}</span>
+              {accessToken && (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                  title="Otomatis diperbarui setiap 5 menit"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span>{formatCountdown(countdown)}</span>
+                </span>
+              )}
             </button>
 
             {/* Tombol Salin Report Tunggal */}
