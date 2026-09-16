@@ -66,6 +66,9 @@ interface BerandaSectionProps {
   onMarkOrdersAsPacked?: (
     items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
   ) => Promise<{ success: boolean; count: number }> | Promise<any> | void;
+  onMarkOrdersAsUnpacked?: (
+    items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
+  ) => Promise<{ success: boolean; count: number }> | Promise<any> | void;
 }
 
 export const BerandaSection: React.FC<BerandaSectionProps> = ({
@@ -86,6 +89,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
   showRekapTab = false,
   rekapTotalCount = 0,
   onMarkOrdersAsPacked,
+  onMarkOrdersAsUnpacked,
 }) => {
   // Clock tick state to update relative elapsed times periodically
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
@@ -399,6 +403,35 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
     if (onMarkOrdersAsPacked) {
       const res = await onMarkOrdersAsPacked(items);
+      return res;
+    }
+  };
+
+  // Handler to revert orders to unpacked directly from SheetOrderListModal
+  const handleMarkOrdersAsUnpackedFromModal = async (
+    items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
+  ) => {
+    const orderSet = new Set(items.map((i) => i.orderNumber.toUpperCase()));
+
+    // Optimistically update sheetRows immediately in local state
+    setSheetRows((prev) =>
+      prev.map((row) => {
+        if (orderSet.has(row.orderNumber.toUpperCase())) {
+          return {
+            ...row,
+            isPacked: false,
+            packingStatus: 'Belum Packing',
+            packingTime: '-',
+            matchedFromPackingReg: false,
+            matchedSource: undefined,
+          };
+        }
+        return row;
+      })
+    );
+
+    if (onMarkOrdersAsUnpacked) {
+      const res = await onMarkOrdersAsUnpacked(items);
       return res;
     }
   };
@@ -1083,6 +1116,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
           }}
           showToast={showToast}
           onMarkOrdersAsPacked={handleMarkOrdersAsPackedFromModal}
+          onMarkOrdersAsUnpacked={handleMarkOrdersAsUnpackedFromModal}
         />
       )}
     </section>

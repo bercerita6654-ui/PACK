@@ -15,6 +15,7 @@ import {
   CheckSquare,
   Square,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SheetProcessedNotaRow, PlatformType, ToastItem } from '../types';
@@ -36,6 +37,9 @@ export interface SheetOrderListModalProps {
   onMarkOrdersAsPacked?: (
     items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
   ) => Promise<any> | void;
+  onMarkOrdersAsUnpacked?: (
+    items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
+  ) => Promise<any> | void;
 }
 
 export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
@@ -50,6 +54,7 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
   onNavigateToSheetHistory,
   showToast,
   onMarkOrdersAsPacked,
+  onMarkOrdersAsUnpacked,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<'ALL' | PlatformType>('ALL');
@@ -59,6 +64,8 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
 
   // Track orders marked as packed during this modal session
   const [locallyPackedOrders, setLocallyPackedOrders] = useState<Set<string>>(new Set());
+  // Track orders marked as unpacked (reverted / batal packing) during this modal session
+  const [locallyUnpackedOrders, setLocallyUnpackedOrders] = useState<Set<string>>(new Set());
   // Track individual orders being processed (loading state)
   const [processingOrders, setProcessingOrders] = useState<Set<string>>(new Set());
   // Multi-select for batch marking
@@ -76,25 +83,29 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       setSearchQuery('');
       setPlatformFilter('ALL');
       setSelectedOrders(new Set());
+      setLocallyUnpackedOrders(new Set());
     }
   }, [isOpen, type]);
 
   const isOrderPacked = (row: SheetProcessedNotaRow) => {
-    return row.isPacked || locallyPackedOrders.has(row.orderNumber.toUpperCase());
+    const upper = row.orderNumber.toUpperCase();
+    if (locallyUnpackedOrders.has(upper)) return false;
+    if (locallyPackedOrders.has(upper)) return true;
+    return row.isPacked;
   };
 
   // Determine base rows based on type
   const baseRows = useMemo(() => {
     if (type === 'pending') {
-      return rows.filter((r) => !r.isPacked || locallyPackedOrders.has(r.orderNumber.toUpperCase()));
+      return rows.filter((r) => !isOrderPacked(r));
     }
     if (type === 'packed') {
-      return rows.filter((r) => r.isPacked || locallyPackedOrders.has(r.orderNumber.toUpperCase()));
+      return rows.filter((r) => isOrderPacked(r));
     }
     if (type === 'overdue') {
       const source = overdueScope === 'all' || timeframe === 'all' ? allSheetRows : rows;
       return source.filter((r) => {
-        if (r.isPacked && !locallyPackedOrders.has(r.orderNumber.toUpperCase())) return false;
+        if (isOrderPacked(r)) return false;
         const d = parseNotaDateTime(r.adminDate, r.adminTime);
         if (!d) return false;
         const elapsed = Math.floor((nowMs - d.getTime()) / 60000);
@@ -103,7 +114,7 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
     }
     // type === 'all'
     return rows;
-  }, [type, rows, allSheetRows, overdueScope, timeframe, nowMs, delayThreshold, locallyPackedOrders]);
+  }, [type, rows, allSheetRows, overdueScope, timeframe, nowMs, delayThreshold, locallyPackedOrders, locallyUnpackedOrders]);
 
   // Filter by search query and platform
   const filteredRows = useMemo(() => {
@@ -132,21 +143,21 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
   // Hitungan cepat overdue untuk tombol toggle
   const periodOverdueCount = useMemo(() => {
     return rows.filter((r) => {
-      if (r.isPacked && !locallyPackedOrders.has(r.orderNumber.toUpperCase())) return false;
+      if (isOrderPacked(r)) return false;
       const d = parseNotaDateTime(r.adminDate, r.adminTime);
       if (!d) return false;
       return Math.floor((nowMs - d.getTime()) / 60000) >= delayThreshold;
     }).length;
-  }, [rows, nowMs, delayThreshold, locallyPackedOrders]);
+  }, [rows, nowMs, delayThreshold, locallyPackedOrders, locallyUnpackedOrders]);
 
   const allOverdueCount = useMemo(() => {
     return allSheetRows.filter((r) => {
-      if (r.isPacked && !locallyPackedOrders.has(r.orderNumber.toUpperCase())) return false;
+      if (isOrderPacked(r)) return false;
       const d = parseNotaDateTime(r.adminDate, r.adminTime);
       if (!d) return false;
       return Math.floor((nowMs - d.getTime()) / 60000) >= delayThreshold;
     }).length;
-  }, [allSheetRows, nowMs, delayThreshold, locallyPackedOrders]);
+  }, [allSheetRows, nowMs, delayThreshold, locallyPackedOrders, locallyUnpackedOrders]);
 
   // Mark single order as packed
   const handleMarkSingleAsPacked = async (row: SheetProcessedNotaRow) => {
@@ -155,6 +166,11 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
 
     setProcessingOrders((prev) => new Set(prev).add(upper));
     setLocallyPackedOrders((prev) => new Set(prev).add(upper));
+    setLocallyUnpackedOrders((prev) => {
+      const next = new Set(prev);
+      next.delete(upper);
+      return next;
+    });
 
     // Deselect if selected
     setSelectedOrders((prev) => {
@@ -188,6 +204,50 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
     }
   };
 
+  // Mark single order as unpacked (Batal Packing / kembalikan status)
+  const handleMarkSingleAsUnpacked = async (row: SheetProcessedNotaRow) => {
+    const upper = row.orderNumber.toUpperCase();
+    if (processingOrders.has(upper) || isBatchProcessing) return;
+
+    setProcessingOrders((prev) => new Set(prev).add(upper));
+    setLocallyUnpackedOrders((prev) => new Set(prev).add(upper));
+    setLocallyPackedOrders((prev) => {
+      const next = new Set(prev);
+      next.delete(upper);
+      return next;
+    });
+
+    // Deselect if selected
+    setSelectedOrders((prev) => {
+      const next = new Set(prev);
+      next.delete(upper);
+      return next;
+    });
+
+    try {
+      if (onMarkOrdersAsUnpacked) {
+        await onMarkOrdersAsUnpacked([
+          {
+            orderNumber: row.orderNumber,
+            platform: row.platform,
+            rowNumber: row.rowNumber,
+            adminDate: row.adminDate,
+          },
+        ]);
+      }
+      soundFX.playSuccess();
+      showToast(`✓ No. Pesanan ${row.orderNumber} dikembalikan jadi Belum Packing`, 'info');
+    } catch (err: any) {
+      showToast(`Gagal merubah status: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setProcessingOrders((prev) => {
+        const next = new Set(prev);
+        next.delete(upper);
+        return next;
+      });
+    }
+  };
+
   // Mark all selected orders as packed
   const handleMarkSelectedAsPacked = async () => {
     if (selectedOrders.size === 0 || isBatchProcessing) return;
@@ -210,6 +270,11 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       upperList.forEach((o) => next.add(o));
       return next;
     });
+    setLocallyUnpackedOrders((prev) => {
+      const next = new Set(prev);
+      upperList.forEach((o) => next.delete(o));
+      return next;
+    });
 
     try {
       if (onMarkOrdersAsPacked) {
@@ -221,6 +286,86 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       setSelectedOrders(new Set());
     } catch (err: any) {
       showToast(`Gagal merubah status: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  // Mark all selected packed orders as unpacked (Batal Packing massal)
+  const handleMarkSelectedAsUnpacked = async () => {
+    if (selectedOrders.size === 0 || isBatchProcessing) return;
+
+    const itemsToUnpack = filteredRows
+      .filter((r) => selectedOrders.has(r.orderNumber.toUpperCase()) && isOrderPacked(r))
+      .map((r) => ({
+        orderNumber: r.orderNumber,
+        platform: r.platform,
+        rowNumber: r.rowNumber,
+        adminDate: r.adminDate,
+      }));
+
+    if (itemsToUnpack.length === 0) return;
+
+    setIsBatchProcessing(true);
+    const upperList = itemsToUnpack.map((i) => i.orderNumber.toUpperCase());
+    setLocallyUnpackedOrders((prev) => {
+      const next = new Set(prev);
+      upperList.forEach((o) => next.add(o));
+      return next;
+    });
+    setLocallyPackedOrders((prev) => {
+      const next = new Set(prev);
+      upperList.forEach((o) => next.delete(o));
+      return next;
+    });
+
+    try {
+      if (onMarkOrdersAsUnpacked) {
+        await onMarkOrdersAsUnpacked(itemsToUnpack);
+      }
+      soundFX.playSuccess();
+      showToast(`✓ ${itemsToUnpack.length} No. Pesanan dikembalikan jadi Belum Packing`, 'info');
+      setSelectedOrders(new Set());
+    } catch (err: any) {
+      showToast(`Gagal merubah status: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setIsBatchProcessing(false);
+    }
+  };
+
+  // Undo all recently packed orders in this modal session
+  const handleUndoAllRecentlyPacked = async () => {
+    if (locallyPackedOrders.size === 0 || isBatchProcessing) return;
+
+    const itemsToUnpack = allSheetRows
+      .filter((r) => locallyPackedOrders.has(r.orderNumber.toUpperCase()))
+      .map((r) => ({
+        orderNumber: r.orderNumber,
+        platform: r.platform,
+        rowNumber: r.rowNumber,
+        adminDate: r.adminDate,
+      }));
+
+    if (itemsToUnpack.length === 0) return;
+
+    setIsBatchProcessing(true);
+    const upperList = itemsToUnpack.map((i) => i.orderNumber.toUpperCase());
+    setLocallyUnpackedOrders((prev) => {
+      const next = new Set(prev);
+      upperList.forEach((o) => next.add(o));
+      return next;
+    });
+    setLocallyPackedOrders(new Set());
+
+    try {
+      if (onMarkOrdersAsUnpacked) {
+        await onMarkOrdersAsUnpacked(itemsToUnpack);
+      }
+      soundFX.playSuccess();
+      showToast(`✓ ${itemsToUnpack.length} No. Pesanan yang baru ditandai berhasil dibatalkan`, 'info');
+      setSelectedOrders(new Set());
+    } catch (err: any) {
+      showToast(`Gagal membatalkan status: ${err.message || 'Error'}`, 'error');
     } finally {
       setIsBatchProcessing(false);
     }
@@ -246,6 +391,11 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       upperList.forEach((o) => next.add(o));
       return next;
     });
+    setLocallyUnpackedOrders((prev) => {
+      const next = new Set(prev);
+      upperList.forEach((o) => next.delete(o));
+      return next;
+    });
 
     try {
       if (onMarkOrdersAsPacked) {
@@ -267,19 +417,31 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
     return filteredRows
       .filter((r) => !isOrderPacked(r))
       .map((r) => r.orderNumber.toUpperCase());
-  }, [filteredRows, locallyPackedOrders]);
+  }, [filteredRows, locallyPackedOrders, locallyUnpackedOrders]);
 
   const unpackedInFilteredCount = visibleUnpackedOrders.length;
 
+  const selectedUnpackedCount = useMemo(() => {
+    return filteredRows.filter((r) => selectedOrders.has(r.orderNumber.toUpperCase()) && !isOrderPacked(r)).length;
+  }, [filteredRows, selectedOrders, locallyPackedOrders, locallyUnpackedOrders]);
+
+  const selectedPackedCount = useMemo(() => {
+    return filteredRows.filter((r) => selectedOrders.has(r.orderNumber.toUpperCase()) && isOrderPacked(r)).length;
+  }, [filteredRows, selectedOrders, locallyPackedOrders, locallyUnpackedOrders]);
+
+  const allVisibleOrderNumbers = useMemo(() => {
+    return filteredRows.map((r) => r.orderNumber.toUpperCase());
+  }, [filteredRows]);
+
   const isAllVisibleSelected =
-    visibleUnpackedOrders.length > 0 &&
-    visibleUnpackedOrders.every((o) => selectedOrders.has(o));
+    allVisibleOrderNumbers.length > 0 &&
+    allVisibleOrderNumbers.every((o) => selectedOrders.has(o));
 
   const toggleSelectAll = () => {
     if (isAllVisibleSelected) {
       setSelectedOrders(new Set());
     } else {
-      setSelectedOrders(new Set(visibleUnpackedOrders));
+      setSelectedOrders(new Set(allVisibleOrderNumbers));
     }
   };
 
@@ -562,7 +724,7 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                   <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>{selectedOrders.size} No. Pesanan dipilih</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setSelectedOrders(new Set())}
@@ -570,32 +732,64 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                   >
                     Batal Pilih
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleMarkSelectedAsPacked}
-                    disabled={isBatchProcessing}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    {isBatchProcessing ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                    )}
-                    <span>Tandai Terpilih Jadi Terpacking ({selectedOrders.size})</span>
-                  </button>
+
+                  {selectedUnpackedCount > 0 && (
+                    <button
+                      type="button"
+                      id="btn-mark-selected-packed"
+                      onClick={handleMarkSelectedAsPacked}
+                      disabled={isBatchProcessing}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isBatchProcessing ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      )}
+                      <span>Tandai Terpilih Jadi Terpacking ({selectedUnpackedCount})</span>
+                    </button>
+                  )}
+
+                  {selectedPackedCount > 0 && (
+                    <button
+                      type="button"
+                      id="btn-mark-selected-unpacked"
+                      onClick={handleMarkSelectedAsUnpacked}
+                      disabled={isBatchProcessing}
+                      className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      title="Kembalikan pesanan terpacking yang dipilih menjadi Belum Packing (jika salah pencet)"
+                    >
+                      {isBatchProcessing ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      )}
+                      <span>Kembalikan Jadi Belum Packing ({selectedPackedCount})</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
 
             {/* Recently Packed Notification Bar */}
             {recentlyPackedCount > 0 && (
-              <div className="px-3 py-1.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center justify-between gap-2 text-[11px] text-emerald-900">
+              <div className="px-3.5 py-2 bg-emerald-50/80 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-[11px] text-emerald-900">
                 <div className="flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span>
-                    <strong>{recentlyPackedCount} No. Pesanan</strong> berhasil diubah jadi Terpacking pada sesi ini tanpa perlu scan barcode.
+                    <strong>{recentlyPackedCount} No. Pesanan</strong> diubah jadi Terpacking pada sesi ini tanpa perlu scan barcode.
                   </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleUndoAllRecentlyPacked}
+                  disabled={isBatchProcessing}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-900 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 active:bg-amber-300 border border-amber-300 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                  title="Batalkan perubahan dan kembalikan semua pesanan yang baru saja diubah jadi terpacking"
+                >
+                  <RotateCcw className="w-3 h-3 text-amber-700" />
+                  <span>Batalkan Semua ({recentlyPackedCount})</span>
+                </button>
               </div>
             )}
           </div>
@@ -626,8 +820,8 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                           type="checkbox"
                           checked={isAllVisibleSelected}
                           onChange={toggleSelectAll}
-                          disabled={visibleUnpackedOrders.length === 0}
-                          title={isAllVisibleSelected ? "Batal pilih semua" : "Pilih semua pesanan yang belum packing"}
+                          disabled={filteredRows.length === 0}
+                          title={isAllVisibleSelected ? "Batal pilih semua" : "Pilih semua pesanan pada daftar ini"}
                           className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer disabled:opacity-40"
                         />
                       </th>
@@ -636,7 +830,7 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                       <th className="py-2.5 px-3.5 w-28">Platform</th>
                       <th className="py-2.5 px-3.5 w-36">Tanggal / Waktu Admin</th>
                       <th className="py-2.5 px-3.5 w-36">Status Packing</th>
-                      <th className="py-2.5 px-3.5 w-52 text-center">Ubah Status / Aksi</th>
+                      <th className="py-2.5 px-3.5 w-60 text-center">Ubah Status / Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200/80 bg-white">
@@ -646,6 +840,7 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                       const isCopiedThis = copiedSingleIndex === row.orderNumber;
                       const isPacked = isOrderPacked(row);
                       const isLocallyPacked = locallyPackedOrders.has(upper);
+                      const isLocallyUnpacked = locallyUnpackedOrders.has(upper);
                       const isProcessing = processingOrders.has(upper);
                       const isSelected = selectedOrders.has(upper);
 
@@ -666,6 +861,8 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                           className={`hover:bg-slate-50/80 transition-colors ${
                             isLocallyPacked
                               ? 'bg-emerald-50/40'
+                              : isLocallyUnpacked
+                              ? 'bg-amber-50/40'
                               : isOverdue
                               ? 'bg-rose-50/30'
                               : ''
@@ -677,9 +874,8 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => toggleSelectOrder(row.orderNumber)}
-                              disabled={isPacked}
-                              title={isPacked ? "Pesanan sudah terpacking" : "Pilih pesanan ini"}
-                              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer disabled:opacity-30"
+                              title={isPacked ? "Pilih pesanan terpacking ini (bisa untuk batalkan packing massal)" : "Pilih pesanan ini"}
+                              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
                             />
                           </td>
 
@@ -750,10 +946,17 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                                 </span>
                               </div>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
-                                <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                                Belum Packing
-                              </span>
+                              <div className="flex flex-col items-start gap-0.5">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                                  <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                                  Belum Packing
+                                </span>
+                                {isLocallyUnpacked && (
+                                  <span className="text-[10px] text-amber-600 font-semibold pl-0.5">
+                                    Batal (Belum Packing)
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </td>
 
@@ -761,10 +964,30 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                           <td className="py-2.5 px-3.5 text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               {isPacked ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>Terpacking</span>
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    id={`badge-packed-${idx}`}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  >
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Terpacking</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    id={`btn-mark-unpacked-${idx}`}
+                                    onClick={() => handleMarkSingleAsUnpacked(row)}
+                                    disabled={isProcessing || isBatchProcessing}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 border border-amber-300 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                                    title="Ubah kembali status jadi Belum Packing (Batal Packing jika salah pencet)"
+                                  >
+                                    {isProcessing ? (
+                                      <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
+                                    ) : (
+                                      <RotateCcw className="w-3 h-3 text-amber-700" />
+                                    )}
+                                    <span>Batal</span>
+                                  </button>
+                                </div>
                               ) : (
                                 <button
                                   type="button"

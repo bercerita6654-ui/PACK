@@ -33,6 +33,7 @@ import {
   appendPackingOrders,
   appendProcessedNotas,
   markOrdersAsPackedInSpreadsheet,
+  markOrdersAsUnpackedInSpreadsheet,
 } from './services/googleWorkspace';
 import {
   DEFAULT_GOOGLE_SHEET_WEB_APP_URL,
@@ -595,6 +596,67 @@ export default function App() {
         return res;
       } catch (err: any) {
         console.error('Error updating packing status in spreadsheet:', err);
+        if (isAuthExpiredError(err)) {
+          invalidateStoredToken();
+          handleTokenExpired();
+        }
+        throw err;
+      }
+    }
+
+    return { success: true, count: items.length };
+  };
+
+  // Handler to revert status of orders from packed back to unpacked (Batal Packing / salah pencet)
+  const handleMarkOrdersAsUnpacked = async (
+    items: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[]
+  ) => {
+    if (!items || items.length === 0) return { success: true, count: 0 };
+
+    const orderSet = new Set(items.map((i) => i.orderNumber.toUpperCase()));
+
+    // 1. Revert local processedNotas if any matching orders are in local memory
+    setProcessedNotas((prev) =>
+      prev.map((nota) => {
+        if (orderSet.has(nota.orderNumber.toUpperCase())) {
+          return {
+            ...nota,
+            isPacked: false,
+            packingTime: '-',
+          };
+        }
+        return nota;
+      })
+    );
+
+    // 2. Remove from packedOrders so local scanner no longer considers them packed
+    setPackedOrders((prev) => prev.filter((p) => !orderSet.has(p.orderNumber.toUpperCase())));
+
+    // 3. Sync to Google Sheets if user is authenticated
+    let activeToken = accessToken;
+    if (!activeToken) {
+      try {
+        activeToken = await refreshGoogleToken();
+        if (activeToken) setAccessToken(activeToken);
+      } catch {
+        // Local state updated
+      }
+    }
+
+    if (activeToken) {
+      try {
+        const res = await markOrdersAsUnpackedInSpreadsheet(
+          activeToken,
+          TARGET_PACKING_SPREADSHEET_ID,
+          items,
+          TARGET_PACKING_SHEET_TAB,
+          TARGET_NOTA_SHEET_TAB
+        );
+        setLastPackingSyncTime(Date.now());
+        setLastNotaSyncTime(Date.now());
+        return res;
+      } catch (err: any) {
+        console.error('Error reverting packing status in spreadsheet:', err);
         if (isAuthExpiredError(err)) {
           invalidateStoredToken();
           handleTokenExpired();
@@ -1710,6 +1772,7 @@ export default function App() {
                 showRekapTab={showRekapTab}
                 rekapTotalCount={appData.counts.JNE + appData.counts.JNT + appData.counts.SPX + appData.counts.IDX}
                 onMarkOrdersAsPacked={handleMarkOrdersAsPacked}
+                onMarkOrdersAsUnpacked={handleMarkOrdersAsUnpacked}
               />
             </motion.div>
           )}

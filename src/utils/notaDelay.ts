@@ -106,20 +106,23 @@ export function evaluateNotaPackedStatus(
 
     if (match) {
       const matchObj = typeof match === 'string' ? { orderNumber: match } : match;
-      const scanTime = matchObj.timestamp && matchObj.timestamp !== '-' ? matchObj.timestamp : '';
-      const scanDate = matchObj.date && matchObj.date !== '-' ? matchObj.date : '';
-      const fallbackTime = scanTime
-        ? scanDate
-          ? `${scanDate} ${scanTime}`
-          : scanTime
-        : 'Selesai (Packing Reg)';
+      const matchStatus = (matchObj as PackingRegRecord).status || '';
+      if (!/^(batal|dibatalkan|cancel|cancelled|belum)/i.test(matchStatus.trim())) {
+        const scanTime = matchObj.timestamp && matchObj.timestamp !== '-' ? matchObj.timestamp : '';
+        const scanDate = matchObj.date && matchObj.date !== '-' ? matchObj.date : '';
+        const fallbackTime = scanTime
+          ? scanDate
+            ? `${scanDate} ${scanTime}`
+            : scanTime
+          : 'Selesai (Packing Reg)';
 
-      return {
-        isPacked: true,
-        resolvedStatus: 'Selesai Packing',
-        resolvedTime: packingTime && packingTime !== '-' ? packingTime : fallbackTime,
-        matchedSource: 'packing_reg_sheet',
-      };
+        return {
+          isPacked: true,
+          resolvedStatus: 'Selesai Packing',
+          resolvedTime: packingTime && packingTime !== '-' ? packingTime : fallbackTime,
+          matchedSource: 'packing_reg_sheet',
+        };
+      }
     }
   }
 

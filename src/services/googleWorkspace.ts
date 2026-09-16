@@ -724,6 +724,9 @@ export async function fetchCrossReferencedNotasAndPacking(
     const date = (r[colDate] ?? r[3] ?? '-').trim();
     const timestamp = (r[colTime] ?? r[4] ?? '-').trim();
     const status = (r[colStatus] ?? r[5] ?? 'Selesai Packing').trim();
+    if (/^(batal|dibatalkan|cancel|cancelled|belum)/i.test(status)) {
+      return;
+    }
 
     const record: PackingRegRecord = {
       orderNumber: orderNumber || 'PACKED',
@@ -1064,6 +1067,98 @@ export async function markOrdersAsPackedInSpreadsheet(
   }
 
   return { addedToPacking, updatedInNota };
+}
+
+/**
+ * Mark orders as UNPACKED (revert to belum packing) in Google Sheets:
+ * 1. Updates Status Packing (Col F) to 'Belum Packing' and Waktu Packing (Col G) to '' in Nota Diproses tab.
+ * 2. Updates Status (Col F) to 'Dibatalkan (Batal Packing)' in Packing Reg tab so it is no longer counted.
+ */
+export async function markOrdersAsUnpackedInSpreadsheet(
+  accessToken: string,
+  spreadsheetId: string,
+  orders: { orderNumber: string; platform: PlatformType; rowNumber?: number; adminDate?: string }[],
+  packingTab: string = 'Packing Reg',
+  notaTab: string = 'Nota Diproses'
+): Promise<{ updatedInPacking: number; updatedInNota: number }> {
+  if (!orders || orders.length === 0) {
+    return { updatedInPacking: 0, updatedInNota: 0 };
+  }
+
+  const orderNumberSet = new Set(orders.map((o) => o.orderNumber.toUpperCase()));
+
+  // 1. Batch update Status in Nota tab if rowNumber is known
+  let updatedInNota = 0;
+  const rowsToUpdate = orders.filter((o) => o.rowNumber && o.rowNumber > 1);
+  if (rowsToUpdate.length > 0) {
+    try {
+      const dataPayload = rowsToUpdate.map((o) => ({
+        range: `'${notaTab}'!F${o.rowNumber}:G${o.rowNumber}`,
+        values: [['Belum Packing', '']],
+      }));
+
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
+      const updateRes = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          valueInputOption: 'USER_ENTERED',
+          data: dataPayload,
+        }),
+      });
+
+      if (updateRes.ok) {
+        updatedInNota = rowsToUpdate.length;
+      }
+    } catch (err) {
+      console.warn('Could not update status in Nota Diproses tab:', err);
+    }
+  }
+
+  // 2. Also check Packing Reg tab to mark matching rows as 'Dibatalkan (Batal Packing)'
+  let updatedInPacking = 0;
+  try {
+    const range = `'${packingTab}'!A1:F3000`;
+    const packValues = await fetchSheetValues(accessToken, spreadsheetId, range);
+    if (packValues && packValues.length > 1) {
+      const packPayload: { range: string; values: string[][] }[] = [];
+      packValues.slice(1).forEach((r, idx) => {
+        const orderNo = String(r[1] || '').trim().toUpperCase();
+        if (orderNo && orderNumberSet.has(orderNo)) {
+          const rowIdx = idx + 2;
+          packPayload.push({
+            range: `'${packingTab}'!F${rowIdx}`,
+            values: [['Dibatalkan (Batal Packing)']],
+          });
+        }
+      });
+
+      if (packPayload.length > 0) {
+        const packUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
+        const res = await fetch(packUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            valueInputOption: 'USER_ENTERED',
+            data: packPayload,
+          }),
+        });
+        if (res.ok) {
+          updatedInPacking = packPayload.length;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Could not update status in Packing Reg tab:', err);
+  }
+
+  return { updatedInPacking, updatedInNota };
 }
 
 
