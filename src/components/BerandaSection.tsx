@@ -148,49 +148,8 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
       if (result.notaHeaders && result.notaHeaders.length > 0) {
         result.notaHeaders.forEach((h, idx) => {
           const lower = h.trim().toLowerCase();
+          // 1. Specific Pack Time
           if (
-            lower.includes('nota') ||
-            lower.includes('pesanan') ||
-            lower.includes('order') ||
-            lower.includes('resi') ||
-            lower.includes('barcode')
-          ) {
-            colOrder = idx;
-          } else if (
-            lower.includes('platform') ||
-            lower.includes('ekspedisi') ||
-            lower.includes('marketplace') ||
-            lower.includes('toko') ||
-            lower.includes('channel')
-          ) {
-            colPlatform = idx;
-          } else if (
-            lower.includes('tanggal') ||
-            lower.includes('tgl') ||
-            lower.includes('date')
-          ) {
-            colDate = idx;
-          } else if (
-            lower.includes('waktu admin') ||
-            lower.includes('jam admin') ||
-            lower.includes('waktu input') ||
-            lower.includes('jam input') ||
-            lower === 'waktu' ||
-            lower === 'jam' ||
-            lower === 'time'
-          ) {
-            colTime = idx;
-          } else if (
-            lower.includes('status packing') ||
-            lower.includes('status') ||
-            lower.includes('packing') ||
-            lower.includes('kondisi') ||
-            lower.includes('keterangan') ||
-            lower.includes('proses') ||
-            lower.includes('cek')
-          ) {
-            colStatus = idx;
-          } else if (
             lower.includes('waktu packing') ||
             lower.includes('jam packing') ||
             lower.includes('tgl packing') ||
@@ -201,12 +160,64 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             lower.includes('packed time')
           ) {
             colPackTime = idx;
-          } else if (
+          }
+          // 2. Specific Status Packing
+          else if (
+            lower.includes('status packing') ||
+            lower === 'status' ||
+            lower.startsWith('status') ||
+            lower.includes('kondisi')
+          ) {
+            colStatus = idx;
+          }
+          // 3. Notes / Keterangan
+          else if (
             lower.includes('catatan') ||
+            lower.includes('keterangan') ||
             lower.includes('notes') ||
-            lower.includes('ket')
+            lower === 'ket'
           ) {
             colNotes = idx;
+          }
+          // 4. Order Number
+          else if (
+            lower.includes('nota') ||
+            lower.includes('pesanan') ||
+            lower.includes('order') ||
+            lower.includes('resi') ||
+            lower.includes('barcode')
+          ) {
+            colOrder = idx;
+          }
+          // 5. Platform
+          else if (
+            lower.includes('platform') ||
+            lower.includes('ekspedisi') ||
+            lower.includes('marketplace') ||
+            lower.includes('toko') ||
+            lower.includes('channel')
+          ) {
+            colPlatform = idx;
+          }
+          // 6. Admin Date
+          else if (
+            lower.includes('tanggal') ||
+            lower.includes('tgl') ||
+            lower.includes('date')
+          ) {
+            colDate = idx;
+          }
+          // 7. Admin Time
+          else if (
+            lower.includes('waktu admin') ||
+            lower.includes('jam admin') ||
+            lower.includes('waktu input') ||
+            lower.includes('jam input') ||
+            lower === 'waktu' ||
+            lower === 'jam' ||
+            lower === 'time'
+          ) {
+            colTime = idx;
           }
         });
       }
@@ -298,6 +309,12 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
       if (result.packingRows && result.packingRows.length > 0) {
         result.packingRows.forEach((r, idx) => {
           if (!r || r.length === 0 || !r.some((cell) => cell && cell.trim() !== '')) return;
+          const status = (r[packColStatus] ?? r[5] ?? '').trim();
+          // Skip if Packing Reg explicitly marks it as canceled, belum, or dibatalkan
+          if (/^(batal|dibatalkan|cancel|cancelled|belum)/i.test(status)) {
+            return;
+          }
+
           const orderNumber = (r[packColOrder] ?? r[1] ?? '').trim().toUpperCase();
           if (!orderNumber) return;
           const norm = normalizeOrderNumber(orderNumber);

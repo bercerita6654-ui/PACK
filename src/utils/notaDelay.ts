@@ -60,6 +60,15 @@ export function evaluateNotaPackedStatus(
   const normOrder = normalizeOrderNumber(orderNumber);
   const exactOrder = (orderNumber || '').trim().toUpperCase();
 
+  // If no valid order number is provided, cannot match
+  if (!exactOrder && !normOrder) {
+    return {
+      isPacked: false,
+      resolvedStatus: 'Belum Packing',
+      resolvedTime: '-',
+    };
+  }
+
   // 1. Cross-reference with 'Packing Reg' sheet records (Sheet "Packing Reg")
   if (packingRegOrders) {
     let match: PackingRegRecord | undefined;
@@ -68,39 +77,16 @@ export function evaluateNotaPackedStatus(
       match =
         packingRegOrders.get(exactOrder) ||
         (normOrder ? packingRegOrders.get(normOrder) : undefined);
-
-      // Also try with stripped leading/trailing symbols if not matched directly
-      if (!match && exactOrder.length >= 6) {
-        for (const [key, val] of packingRegOrders.entries()) {
-          if (
-            key === exactOrder ||
-            key === normOrder ||
-            (normOrder && key.includes(normOrder)) ||
-            (normOrder && normOrder.includes(key) && key.length >= 6)
-          ) {
-            match = val;
-            break;
-          }
-        }
-      }
     } else if (Array.isArray(packingRegOrders)) {
       match = packingRegOrders.find((p) => {
         if (typeof p === 'string') {
           const pExact = p.trim().toUpperCase();
           const pNorm = normalizeOrderNumber(p);
-          return (
-            pExact === exactOrder ||
-            (normOrder && pNorm === normOrder) ||
-            (normOrder && pNorm && (pNorm.includes(normOrder) || normOrder.includes(pNorm)))
-          );
+          return pExact === exactOrder || (normOrder && pNorm === normOrder);
         }
         const pExact = (p.orderNumber || '').trim().toUpperCase();
         const pNorm = normalizeOrderNumber(p.orderNumber);
-        return (
-          pExact === exactOrder ||
-          (normOrder && pNorm === normOrder) ||
-          (normOrder && pNorm && (pNorm.includes(normOrder) || normOrder.includes(pNorm)))
-        );
+        return pExact === exactOrder || (normOrder && pNorm === normOrder);
       }) as PackingRegRecord | undefined;
     }
 
@@ -131,11 +117,7 @@ export function evaluateNotaPackedStatus(
     const match = packedOrders.find((p) => {
       const pExact = p.orderNumber.trim().toUpperCase();
       const pNorm = normalizeOrderNumber(p.orderNumber);
-      return (
-        pExact === exactOrder ||
-        (normOrder && pNorm === normOrder) ||
-        (normOrder && pNorm && (pNorm.includes(normOrder) || normOrder.includes(pNorm)))
-      );
+      return pExact === exactOrder || (normOrder && pNorm === normOrder);
     });
     if (match) {
       return {
@@ -152,12 +134,7 @@ export function evaluateNotaPackedStatus(
     const match = localNotas.find((n) => {
       const nExact = n.orderNumber.trim().toUpperCase();
       const nNorm = normalizeOrderNumber(n.orderNumber);
-      return (
-        (nExact === exactOrder ||
-          (normOrder && nNorm === normOrder) ||
-          (normOrder && nNorm && (nNorm.includes(normOrder) || normOrder.includes(nNorm)))) &&
-        n.isPacked
-      );
+      return (nExact === exactOrder || (normOrder && nNorm === normOrder)) && n.isPacked;
     });
     if (match) {
       return {
@@ -185,18 +162,17 @@ export function evaluateNotaPackedStatus(
   const isAffirmative =
     s.includes('selesai') ||
     s.includes('sudah') ||
-    s.includes('packed') ||
     s.includes('terpacking') ||
     s.includes('dipacking') ||
-    s.includes('packing') ||
+    s.includes('packed') ||
     s.includes('beres') ||
-    s.includes('siap') ||
-    s.includes('kirim') ||
+    s.includes('siap kirim') ||
     s.includes('terkirim') ||
     s.includes('done') ||
-    s.includes('ok') ||
-    s.includes('yes') ||
-    s.includes('true') ||
+    s === 'ok' ||
+    s.startsWith('ok ') ||
+    s === 'yes' ||
+    s === 'true' ||
     s === 'y' ||
     s === 'v' ||
     s === '✓' ||

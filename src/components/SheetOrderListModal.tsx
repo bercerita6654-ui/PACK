@@ -20,7 +20,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { SheetProcessedNotaRow, PlatformType, ToastItem } from '../types';
 import { getPlatformColor } from '../utils/platformDetector';
-import { parseNotaDateTime, formatElapsedDuration, formatThresholdLabel } from '../utils/notaDelay';
+import { parseNotaDateTime, formatElapsedDuration, formatThresholdLabel, normalizeOrderNumber } from '../utils/notaDelay';
 import { soundFX } from '../utils/audio';
 
 export interface SheetOrderListModalProps {
@@ -89,8 +89,9 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
 
   const isOrderPacked = (row: SheetProcessedNotaRow) => {
     const upper = row.orderNumber.toUpperCase();
-    if (locallyUnpackedOrders.has(upper)) return false;
-    if (locallyPackedOrders.has(upper)) return true;
+    const norm = normalizeOrderNumber(row.orderNumber);
+    if (locallyUnpackedOrders.has(upper) || (norm && locallyUnpackedOrders.has(norm))) return false;
+    if (locallyPackedOrders.has(upper) || (norm && locallyPackedOrders.has(norm))) return true;
     return row.isPacked;
   };
 

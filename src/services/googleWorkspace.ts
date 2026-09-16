@@ -747,10 +747,20 @@ export async function fetchCrossReferencedNotasAndPacking(
       }
     }
 
-    // Also index any cell in the row that could be an order number, resi, or barcode
-    r.forEach((cell) => {
+    // Only index alternative resi/barcode cells if they are genuinely order/tracking numbers (never dates, times, or counters)
+    r.forEach((cell, cIdx) => {
+      if (cIdx === colDate || cIdx === colTime || cIdx === colStatus || cIdx === colPlatform) return;
       const val = (cell || '').trim();
-      if (val && val.length >= 5 && !val.includes(' ') && !/^(drop|pickup|selesai|packing|beres|spx|jne|jnt|idx|ninja)$/i.test(val)) {
+      // Skip dates (e.g. 26/09/15, 2026-09-15), timestamps (e.g. 14:20), short numbers or common words
+      if (
+        val &&
+        val.length >= 8 &&
+        !val.includes(' ') &&
+        !val.includes(':') &&
+        !val.includes('/') &&
+        !/^\d{2,4}-\d{2}-\d{2,4}$/.test(val) &&
+        !/^(drop|pickup|selesai|packing|beres|spx|jne|jnt|idx|ninja)$/i.test(val)
+      ) {
         const u = val.toUpperCase();
         const n = normalizeOrderNumber(val);
         if (!packingMap.has(u)) packingMap.set(u, record);
