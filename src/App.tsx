@@ -1694,8 +1694,8 @@ export default function App() {
           activeSpreadsheet={activeSpreadsheet}
           onOpenGoogleDriveModal={() => setIsGoogleDriveModalOpen(true)}
           onOpenSessionModal={() => setIsGoogleSessionModalOpen(true)}
-          onGoogleSignIn={() => setIsGoogleSessionModalOpen(true)}
-          onRenewSession={() => setIsGoogleSessionModalOpen(true)}
+          onGoogleSignIn={handleGoogleSignIn}
+          onRenewSession={handleGoogleSessionAction}
           isRenewingSession={isRenewingSession}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onShareWhatsApp={handleShareWhatsApp}

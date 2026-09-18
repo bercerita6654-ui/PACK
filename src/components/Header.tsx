@@ -102,67 +102,92 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-          {/* Pop-up Trigger Google Session & Login Button */}
+          {/* Direct 1-Click Google Session & Account Controls */}
           {user ? (
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-2">
+              {/* Direct 1-Click Renew Button outside the modal */}
               <button
                 type="button"
-                id="btn-google-renew-session"
-                onClick={handleOpenAuthPopup}
+                id="btn-modal-action-renew-session"
+                onClick={() => {
+                  if (onRenewSession) {
+                    onRenewSession();
+                  } else {
+                    onGoogleSignIn();
+                  }
+                }}
                 disabled={isRenewingSession}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-900 border border-emerald-200/80 transition-all text-xs font-black shadow-2xs group cursor-pointer"
-                title={`Akun: ${user.email || user.displayName || 'Google User'}. Klik untuk buka pop-up kelola & perbarui sesi Google`}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 text-white text-xs font-black shadow-sm transition-all group cursor-pointer"
+                title="Klik langsung untuk perbarui sesi token Google tanpa buka pop-up"
               >
-                {isRenewingSession ? (
-                  <RefreshCw className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
-                ) : user.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || 'Google User'}
-                    referrerPolicy="no-referrer"
-                    className="w-4 h-4 rounded-full border border-emerald-400"
-                  />
-                ) : (
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                )}
-                <div className="text-left flex items-center gap-1.5">
-                  <span className="font-black text-[11px] leading-tight text-slate-800 group-hover:text-emerald-900">
-                    {isRenewingSession
-                      ? 'Memperbarui Sesi...'
-                      : accessToken
-                      ? user.displayName || 'Sesi Google Aktif'
-                      : 'Perbarui Sesi Google'}
-                  </span>
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      accessToken ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'
-                    }`}
-                    title={accessToken ? 'Sesi Google Aktif & Terhubung' : 'Sesi Perlu Diperbarui'}
-                  />
-                </div>
+                <RefreshCw
+                  className={`w-3.5 h-3.5 text-emerald-100 ${
+                    isRenewingSession ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'
+                  }`}
+                />
+                <span>{isRenewingSession ? 'Memperbarui...' : 'Perbarui Sesi Google'}</span>
               </button>
 
-              <button
-                type="button"
-                id="btn-google-drive-connected"
-                onClick={onOpenGoogleDriveModal}
-                className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-white rounded-lg transition-all cursor-pointer"
-                title={`Kelola Google Drive & Spreadsheet (${activeSpreadsheet?.name || 'Default'})`}
-              >
-                <HardDrive className="w-4 h-4 text-emerald-600" />
-              </button>
+              {/* User Account Info & Menu Trigger */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200 shadow-2xs">
+                <button
+                  type="button"
+                  id="btn-google-account-modal"
+                  onClick={onOpenSessionModal}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-800 border border-slate-200/80 transition-all text-xs font-bold shadow-2xs group cursor-pointer"
+                  title={`Akun: ${user.email || user.displayName || 'Google User'}. Klik untuk buka menu akun & opsi ganti akun`}
+                >
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName || 'Google User'}
+                      referrerPolicy="no-referrer"
+                      className="w-4 h-4 rounded-full border border-emerald-400"
+                    />
+                  ) : (
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  )}
+                  <div className="text-left flex items-center gap-1.5 max-w-[140px] truncate">
+                    <span className="font-bold text-[11px] leading-tight text-slate-800 truncate">
+                      {user.displayName || user.email?.split('@')[0] || 'Google User'}
+                    </span>
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        accessToken ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'
+                      }`}
+                      title={accessToken ? 'Sesi Google Aktif & Terhubung' : 'Sesi Perlu Diperbarui'}
+                    />
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-google-drive-connected"
+                  onClick={onOpenGoogleDriveModal}
+                  className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-white rounded-lg transition-all cursor-pointer"
+                  title={`Kelola Google Drive & Spreadsheet (${activeSpreadsheet?.name || 'Default'})`}
+                >
+                  <HardDrive className="w-4 h-4 text-emerald-600" />
+                </button>
+              </div>
             </div>
           ) : (
             <button
               type="button"
-              id="btn-google-signin-header"
-              onClick={handleOpenAuthPopup}
+              id="btn-modal-action-renew-session"
+              onClick={() => {
+                if (onGoogleSignIn) {
+                  onGoogleSignIn();
+                } else if (onRenewSession) {
+                  onRenewSession();
+                }
+              }}
               disabled={isRenewingSession}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-emerald-400/80 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 font-black text-xs transition-all shadow-xs cursor-pointer"
-              title="Buka pop-up masuk & kelola Sesi Google"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-emerald-500 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-all shadow-sm cursor-pointer"
+              title="Klik langsung untuk masuk dengan akun Google"
             >
               {isRenewingSession ? (
-                <RefreshCw className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
+                <RefreshCw className="w-3.5 h-3.5 text-emerald-100 animate-spin" />
               ) : (
                 <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 48 48">
                   <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -171,7 +196,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                 </svg>
               )}
-              <span>{isRenewingSession ? 'Menghubungkan...' : 'Perbarui Sesi Google'}</span>
+              <span>{isRenewingSession ? 'Menghubungkan...' : 'Masuk Akun Google'}</span>
             </button>
           )}
 
