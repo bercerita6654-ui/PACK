@@ -17,6 +17,99 @@ export interface SheetMetadata {
 }
 
 /**
+ * Helper to handle HTTP 429 (Rate Limit / Quota Exceeded) and transient network errors with exponential backoff
+ */
+async function fetchWithRetry(
+  url: string,
+  init?: RequestInit,
+  maxRetries: number = 3
+): Promise<Response> {
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    try {
+      const res = await fetch(url, init);
+      if (res.status === 429) {
+        attempt++;
+        if (attempt > maxRetries) {
+          return res;
+        }
+        // Google Sheets API has 60 requests/minute quota per user.
+        // Wait with backoff + jitter: attempt 1 ~ 2000-2500ms, attempt 2 ~ 4000-4500ms, attempt 3 ~ 7000ms
+        const delay = Math.min(attempt * 2000 + Math.random() * 800, 8000);
+        console.warn(
+          `[Google Sheets API 429] Batas kuota per menit tercapai. Menunggu jeda ${Math.round(delay)}ms (percobaan ${attempt}/${maxRetries})...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+      return res;
+    } catch (networkErr) {
+      attempt++;
+      if (attempt > maxRetries) throw networkErr;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+  return fetch(url, init);
+}
+
+/**
+ * Format Google Sheets API errors cleanly so users see helpful Indonesian feedback
+ * rather than raw JSON stack traces.
+ */
+function formatSheetsApiError(actionName: string, status: number, rawErr: string): string {
+  if (
+    status === 429 ||
+    rawErr.includes('RESOURCE_EXHAUSTED') ||
+    rawErr.includes('RATE_LIMIT_EXCEEDED') ||
+    rawErr.includes('Quota exceeded')
+  ) {
+    return 'Batas kuota baca Google Sheet per menit (60 req/menit) tercapai. Harap tunggu sejenak, sistem otomatis mengantre dan akan memuat ulang data.';
+  }
+  if (status === 401 || status === 403 || rawErr.includes('UNAUTHENTICATED')) {
+    return 'Sesi otentikasi Google Sheets tidak valid atau kedaluwarsa. Silakan hubungkan ulang akun Google.';
+  }
+  if (status === 404) {
+    return 'Spreadsheet atau lembar kerja Google Sheets tidak ditemukan. Pastikan Spreadsheet ID sudah benar.';
+  }
+  try {
+    const parsed = JSON.parse(rawErr);
+    if (parsed?.error?.message) {
+      return `${actionName}: ${parsed.error.message}`;
+    }
+  } catch {
+    // raw string
+  }
+  return `${actionName}: ${status} - ${rawErr.slice(0, 180)}`;
+}
+
+// In-memory cache for Spreadsheet Metadata (tabs list, title)
+const metadataCache = new Map<string, { data: SheetMetadata; timestamp: number }>();
+const inFlightMetadata = new Map<string, Promise<SheetMetadata>>();
+const METADATA_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// In-memory cache for Sheet Values (range fetches)
+const sheetValuesCache = new Map<string, { data: any[][]; timestamp: number }>();
+const inFlightSheetValues = new Map<string, Promise<any[][]>>();
+const VALUES_CACHE_TTL_MS = 30 * 1000; // 30 seconds (prevents bursts while keeping fresh)
+
+/**
+ * Clear cache for specific spreadsheet or all caches after writing/syncing
+ */
+export function clearSheetDataCache(spreadsheetId?: string) {
+  if (spreadsheetId) {
+    metadataCache.delete(spreadsheetId);
+    for (const key of sheetValuesCache.keys()) {
+      if (key.startsWith(spreadsheetId)) {
+        sheetValuesCache.delete(key);
+      }
+    }
+  } else {
+    metadataCache.clear();
+    sheetValuesCache.clear();
+  }
+}
+
+/**
  * List spreadsheets available in user's Google Drive
  */
 export async function listSpreadsheets(
@@ -28,13 +121,13 @@ export async function listSpreadsheets(
   const fields = encodeURIComponent('files(id, name, modifiedTime, webViewLink)');
   const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=modifiedTime%20desc&pageSize=30`;
 
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`Gagal mengambil daftar file Google Drive: ${res.status} - ${errorText}`);
+    throw new Error(formatSheetsApiError('Gagal mengambil daftar file Google Drive', res.status, errorText));
   }
 
   const data = await res.json();
@@ -42,33 +135,60 @@ export async function listSpreadsheets(
 }
 
 /**
- * Get spreadsheet details and sheet tabs list
+ * Get spreadsheet details and sheet tabs list with caching and request deduplication
  */
 export async function getSpreadsheetDetails(
   accessToken: string,
-  spreadsheetId: string
+  spreadsheetId: string,
+  forceFresh: boolean = false
 ): Promise<SheetMetadata> {
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=spreadsheetId,properties.title,sheets.properties(sheetId,title)`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }
-  );
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gagal membaca metadata Google Sheet: ${res.status} - ${err}`);
+  const now = Date.now();
+  const cached = metadataCache.get(spreadsheetId);
+  if (!forceFresh && cached && now - cached.timestamp < METADATA_CACHE_TTL_MS) {
+    return cached.data;
   }
 
-  const data = await res.json();
-  return {
-    id: data.spreadsheetId,
-    title: data.properties?.title || 'Spreadsheet Tanpa Judul',
-    sheets: (data.sheets || []).map((s: { properties: { sheetId: number; title: string } }) => ({
-      id: s.properties.sheetId,
-      title: s.properties.title,
-    })),
-  };
+  if (inFlightMetadata.has(spreadsheetId)) {
+    return inFlightMetadata.get(spreadsheetId)!;
+  }
+
+  const promise = (async () => {
+    try {
+      const res = await fetchWithRetry(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=spreadsheetId,properties.title,sheets.properties(sheetId,title)`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
+      if (!res.ok) {
+        const err = await res.text();
+        if (cached?.data) {
+          console.warn('[Google Sheets] Menggunakan metadata cache karena batas API tercapai:', res.status);
+          return cached.data;
+        }
+        throw new Error(formatSheetsApiError('Gagal membaca metadata Google Sheet', res.status, err));
+      }
+
+      const data = await res.json();
+      const result: SheetMetadata = {
+        id: data.spreadsheetId,
+        title: data.properties?.title || 'Spreadsheet Tanpa Judul',
+        sheets: (data.sheets || []).map((s: { properties: { sheetId: number; title: string } }) => ({
+          id: s.properties.sheetId,
+          title: s.properties.title,
+        })),
+      };
+
+      metadataCache.set(spreadsheetId, { data: result, timestamp: Date.now() });
+      return result;
+    } finally {
+      inFlightMetadata.delete(spreadsheetId);
+    }
+  })();
+
+  inFlightMetadata.set(spreadsheetId, promise);
+  return promise;
 }
 
 /**
@@ -227,6 +347,8 @@ export async function appendDailyRekapRow(
     status: 'success',
     detailMessage: `Berhasil menambahkan rekap harian ke sheet "${targetSheet}"!`,
   });
+
+  clearSheetDataCache(spreadsheetId);
 }
 
 export interface AppendPackingOrdersResult {
@@ -446,6 +568,8 @@ export async function appendPackingOrders(
     detailMessage: `Sukses menyimpan ${rowsToAppend.length} baris ke sheet "${targetSheet}"!`,
   });
 
+  clearSheetDataCache(spreadsheetId);
+
   return {
     added: rowsToAppend.length,
     skippedDuplicates: skippedOrders.length,
@@ -504,30 +628,95 @@ export async function addSheetTab(
       }
     );
   }
+
+  clearSheetDataCache(spreadsheetId);
 }
 
 /**
- * Fetch rows from a specific spreadsheet sheet tab
+ * Fetch rows from a specific spreadsheet sheet tab with in-memory caching and deduplication
  */
 export async function fetchSheetValues(
   accessToken: string,
   spreadsheetId: string,
-  range: string = 'A1:Z100'
+  range: string = 'A1:Z100',
+  forceFresh: boolean = false
 ): Promise<any[][]> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
-    range
-  )}`;
-  const res = await fetch(url, {
+  const cacheKey = `${spreadsheetId}:${range}`;
+  const now = Date.now();
+  const cached = sheetValuesCache.get(cacheKey);
+
+  if (!forceFresh && cached && now - cached.timestamp < VALUES_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  if (inFlightSheetValues.has(cacheKey)) {
+    return inFlightSheetValues.get(cacheKey)!;
+  }
+
+  const promise = (async () => {
+    try {
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+        range
+      )}`;
+      const res = await fetchWithRetry(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        if (cached?.data) {
+          console.warn('[Google Sheets] Menggunakan nilai sheet dari cache karena batas API tercapai:', res.status);
+          return cached.data;
+        }
+        throw new Error(formatSheetsApiError('Gagal membaca data dari Google Sheet', res.status, err));
+      }
+
+      const data = await res.json();
+      const rows = data.values || [];
+      sheetValuesCache.set(cacheKey, { data: rows, timestamp: Date.now() });
+      return rows;
+    } finally {
+      inFlightSheetValues.delete(cacheKey);
+    }
+  })();
+
+  inFlightSheetValues.set(cacheKey, promise);
+  return promise;
+}
+
+/**
+ * Fetch multiple ranges in a SINGLE Google Sheets API call using values:batchGet
+ * Drastically cuts down read quota usage (1 request instead of multiple).
+ */
+export async function fetchBatchSheetValues(
+  accessToken: string,
+  spreadsheetId: string,
+  ranges: string[]
+): Promise<{ range: string; values: any[][] }[]> {
+  const params = ranges.map((r) => `ranges=${encodeURIComponent(r)}`).join('&');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params}`;
+
+  const res = await fetchWithRetry(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Gagal membaca data dari Google Sheet: ${res.status} - ${err}`);
+    throw new Error(formatSheetsApiError('Gagal membaca data batch dari Google Sheet', res.status, err));
   }
 
   const data = await res.json();
-  return data.values || [];
+  const valueRanges = data.valueRanges || [];
+  return valueRanges.map((vr: any) => {
+    const rRows = vr.values || [];
+    if (vr.range) {
+      sheetValuesCache.set(`${spreadsheetId}:${vr.range}`, { data: rRows, timestamp: Date.now() });
+    }
+    return {
+      range: vr.range || '',
+      values: rRows,
+    };
+  });
 }
 
 /**
@@ -639,6 +828,7 @@ export interface CrossReferencedNotasResult {
 /**
  * Simultaneously fetch both 'Nota Diproses' (unpacked/admin notas) and 'Packing Reg' (packed orders)
  * and build a normalized lookup map to cross-reference packed orders seamlessly.
+ * Uses batchGet to execute in a single API read request whenever possible, minimizing quota consumption.
  */
 export async function fetchCrossReferencedNotasAndPacking(
   accessToken: string,
@@ -646,26 +836,97 @@ export async function fetchCrossReferencedNotasAndPacking(
   targetNotaTab: string = 'Nota Diproses',
   targetPackingTab: string = 'Packing Reg'
 ): Promise<CrossReferencedNotasResult> {
-  const [notaResult, packingResult] = await Promise.allSettled([
-    fetchProcessedNotasHistory(accessToken, spreadsheetId, targetNotaTab),
-    fetchPackingRegHistory(accessToken, spreadsheetId, targetPackingTab),
-  ]);
+  // Step 1: Resolve actual tab names using cached metadata (0 API calls if cached)
+  let matchedNotaTab = targetNotaTab;
+  let matchedPackingTab = targetPackingTab;
 
-  const notaData =
-    notaResult.status === 'fulfilled'
-      ? notaResult.value
-      : { tabName: targetNotaTab, headers: [], rows: [] };
+  try {
+    const details = await getSpreadsheetDetails(accessToken, spreadsheetId);
+    if (details.sheets && details.sheets.length > 0) {
+      const foundNota =
+        details.sheets.find(
+          (s) => s.title.trim().toLowerCase() === targetNotaTab.trim().toLowerCase()
+        )?.title ||
+        details.sheets.find(
+          (s) =>
+            s.title.toLowerCase().includes('nota diproses') ||
+            s.title.toLowerCase().includes('nota') ||
+            s.title.toLowerCase().includes('diproses')
+        )?.title;
+      if (foundNota) matchedNotaTab = foundNota;
 
-  const packingData =
-    packingResult.status === 'fulfilled'
-      ? packingResult.value
-      : { tabName: targetPackingTab, headers: [], rows: [] };
-
-  if (notaResult.status === 'rejected' && isAuthExpiredError(notaResult.reason)) {
-    throw notaResult.reason;
+      const foundPacking =
+        details.sheets.find(
+          (s) => s.title.trim().toLowerCase() === targetPackingTab.trim().toLowerCase()
+        )?.title ||
+        details.sheets.find(
+          (s) =>
+            s.title.toLowerCase().includes('packing reg') ||
+            s.title.toLowerCase().includes('packing') ||
+            s.title.toLowerCase().includes('paket')
+        )?.title;
+      if (foundPacking) matchedPackingTab = foundPacking;
+    }
+  } catch (metaErr: any) {
+    if (isAuthExpiredError(metaErr)) throw metaErr;
+    console.warn('Metadata resolution failed in cross-referencing, using fallback names:', metaErr);
   }
-  if (packingResult.status === 'rejected' && isAuthExpiredError(packingResult.reason)) {
-    throw packingResult.reason;
+
+  // Step 2: Fetch both tabs simultaneously using batchGet (1 API request!)
+  let notaHeaders: string[] = [];
+  let notaRows: string[][] = [];
+  let packingHeaders: string[] = [];
+  let packingRows: string[][] = [];
+  let batchSucceeded = false;
+
+  try {
+    const batchResult = await fetchBatchSheetValues(accessToken, spreadsheetId, [
+      `'${matchedNotaTab}'!A1:Z5000`,
+      `'${matchedPackingTab}'!A1:Z2000`,
+    ]);
+
+    if (batchResult.length > 0 && batchResult[0].values.length > 0) {
+      notaHeaders = (batchResult[0].values[0] || []).map((h) => String(h || ''));
+      notaRows = batchResult[0].values.slice(1).map((r) => r.map((c) => String(c ?? '')));
+    }
+    if (batchResult.length > 1 && batchResult[1].values.length > 0) {
+      packingHeaders = (batchResult[1].values[0] || []).map((h) => String(h || ''));
+      packingRows = batchResult[1].values.slice(1).map((r) => r.map((c) => String(c ?? '')));
+    }
+    batchSucceeded = true;
+  } catch (batchErr: any) {
+    if (isAuthExpiredError(batchErr)) throw batchErr;
+    console.warn('Batch fetch failed, falling back to sequential fetch:', batchErr);
+  }
+
+  // Fallback to Promise.allSettled if batchGet failed
+  if (!batchSucceeded) {
+    const [notaResult, packingResult] = await Promise.allSettled([
+      fetchProcessedNotasHistory(accessToken, spreadsheetId, matchedNotaTab),
+      fetchPackingRegHistory(accessToken, spreadsheetId, matchedPackingTab),
+    ]);
+
+    const notaData =
+      notaResult.status === 'fulfilled'
+        ? notaResult.value
+        : { tabName: matchedNotaTab, headers: [], rows: [] };
+
+    const packingData =
+      packingResult.status === 'fulfilled'
+        ? packingResult.value
+        : { tabName: matchedPackingTab, headers: [], rows: [] };
+
+    if (notaResult.status === 'rejected' && isAuthExpiredError(notaResult.reason)) {
+      throw notaResult.reason;
+    }
+    if (packingResult.status === 'rejected' && isAuthExpiredError(packingResult.reason)) {
+      throw packingResult.reason;
+    }
+
+    notaHeaders = notaData.headers;
+    notaRows = notaData.rows;
+    packingHeaders = packingData.headers;
+    packingRows = packingData.rows;
   }
 
   // Build packingMap from packingData
@@ -677,8 +938,8 @@ export async function fetchCrossReferencedNotasAndPacking(
   let colTime = 4;
   let colStatus = 5;
 
-  if (packingData.headers && packingData.headers.length > 0) {
-    packingData.headers.forEach((h, idx) => {
+  if (packingHeaders && packingHeaders.length > 0) {
+    packingHeaders.forEach((h, idx) => {
       const lower = h.trim().toLowerCase();
       if (
         lower.includes('pesanan') ||
@@ -716,7 +977,7 @@ export async function fetchCrossReferencedNotasAndPacking(
     });
   }
 
-  packingData.rows.forEach((r) => {
+  packingRows.forEach((r) => {
     if (!r || r.length === 0 || !r.some((c) => c && c.trim() !== '')) return;
 
     const orderNumber = (r[colOrder] ?? r[1] ?? '').trim();
@@ -770,14 +1031,14 @@ export async function fetchCrossReferencedNotasAndPacking(
   });
 
   return {
-    notaTabName: notaData.tabName,
-    packingTabName: packingData.tabName,
-    notaHeaders: notaData.headers,
-    notaRows: notaData.rows,
-    packingHeaders: packingData.headers,
-    packingRows: packingData.rows,
+    notaTabName: matchedNotaTab,
+    packingTabName: matchedPackingTab,
+    notaHeaders,
+    notaRows,
+    packingHeaders,
+    packingRows,
     packingMap,
-    totalPackingCount: packingData.rows.filter(
+    totalPackingCount: packingRows.filter(
       (r) => r && r.some((c) => c && c.trim() !== '')
     ).length,
   };
@@ -989,6 +1250,8 @@ export async function appendProcessedNotas(
     detailMessage: `Sukses menyimpan ${rowsToAppend.length} nota ke sheet "${targetSheet}"!`,
   });
 
+  clearSheetDataCache(spreadsheetId);
+
   return {
     added: rowsToAppend.length,
     skippedDuplicates: skippedOrders.length,
@@ -1075,6 +1338,8 @@ export async function markOrdersAsPackedInSpreadsheet(
       console.warn('Could not update status in Nota Diproses tab:', err);
     }
   }
+
+  clearSheetDataCache(spreadsheetId);
 
   return { addedToPacking, updatedInNota };
 }
@@ -1167,6 +1432,8 @@ export async function markOrdersAsUnpackedInSpreadsheet(
   } catch (err) {
     console.warn('Could not update status in Packing Reg tab:', err);
   }
+
+  clearSheetDataCache(spreadsheetId);
 
   return { updatedInPacking, updatedInNota };
 }

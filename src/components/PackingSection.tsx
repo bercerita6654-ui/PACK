@@ -49,9 +49,14 @@ import { fetchCrossReferencedNotasAndPacking } from '../services/googleWorkspace
 import {
   isNotaDelayed,
   isDateToday,
+  isDateYesterday,
+  isDateThisWeek,
+  isDateThisMonth,
   DEFAULT_DELAY_THRESHOLD_MINUTES,
   formatThresholdLabel,
   generatePackingReportText,
+  normalizeOrderNumber,
+  evaluateNotaPackedStatus,
 } from '../utils/notaDelay';
 
 interface PackingSectionProps {
@@ -553,16 +558,39 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     showToast('File CSV Paket Packing berhasil diunduh.', 'success');
   };
 
-  // Google Sheet live cross-referenced state for Performa Packing Hari Ini
+  // Google Sheet live cross-referenced state for Performa Packing
   const [sheetRows, setSheetRows] = useState<SheetProcessedNotaRow[]>([]);
   const [sheetLoading, setSheetLoading] = useState<boolean>(false);
   const [todayStatsSource, setTodayStatsSource] = useState<'sheet' | 'local'>('sheet');
   const [sheetResolvedTab, setSheetResolvedTab] = useState<string>('Nota Diproses');
   const [sheetResolvedPackingTab, setSheetResolvedPackingTab] = useState<string>(targetSheetTab || 'Packing Reg');
+  const [packingTimeframe, setPackingTimeframe] = useState<'today' | 'yesterday' | 'week' | 'all'>('today');
+
+  // Cache raw sheet payload to allow instant in-memory re-evaluations when orders change
+  const rawSheetResultRef = useRef<{
+    notaRows: string[][];
+    packingRows: string[][];
+    packingMap: Map<string, { timestamp: string; platform: string; date: string }>;
+    totalPackingCount: number;
+    notaTabName: string;
+    packingTabName: string;
+    notaHeaders: string[];
+    packingHeaders: string[];
+  } | null>(null);
+
+  // 5-minute auto-refresh cycle (300 seconds)
+  const REFRESH_INTERVAL_SECONDS = 300;
+  const [countdown, setCountdown] = useState<number>(REFRESH_INTERVAL_SECONDS);
+
+  const sheetLoadingRef = useRef(sheetLoading);
+  useEffect(() => {
+    sheetLoadingRef.current = sheetLoading;
+  }, [sheetLoading]);
 
   const loadSheetData = useCallback(async () => {
     if (!accessToken) {
       setSheetRows([]);
+      rawSheetResultRef.current = null;
       return;
     }
     setSheetLoading(true);
@@ -573,6 +601,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
         'Nota Diproses',
         targetSheetTab || 'Packing Reg'
       );
+      rawSheetResultRef.current = result;
       setSheetResolvedTab(result.notaTabName);
       setSheetResolvedPackingTab(result.packingTabName);
 
@@ -666,12 +695,15 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
 
         if (!orderNumber) return;
 
-        const isPacked =
-          (result.packingMap && result.packingMap.has(orderNumber)) ||
-          rawStatus.toLowerCase().includes('selesai') ||
-          rawStatus.toLowerCase().includes('sudah') ||
-          rawStatus.toLowerCase().includes('packed') ||
-          rawStatus.toLowerCase().includes('siap kirim');
+        const evaluated = evaluateNotaPackedStatus(
+          rawStatus,
+          packingTime,
+          orderNumber,
+          orders,
+          processedNotas,
+          result.packingMap
+        );
+        const isPacked = evaluated.isPacked;
 
         let platform: PlatformType = 'Shopee';
         const pLower = rawPlatform.toLowerCase();
@@ -691,8 +723,8 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
           adminDate,
           adminTime,
           isPacked,
-          packingStatus: isPacked ? 'Selesai Packing' : 'Belum Packing',
-          packingTime,
+          packingStatus: evaluated.resolvedStatus,
+          packingTime: evaluated.resolvedTime,
           notes,
         });
       });
@@ -706,28 +738,158 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     }
   }, [accessToken, targetSpreadsheetId, targetSheetTab]);
 
+  const loadSheetDataRef = useRef(loadSheetData);
+  useEffect(() => {
+    loadSheetDataRef.current = loadSheetData;
+  }, [loadSheetData]);
+
   useEffect(() => {
     if (accessToken) {
       loadSheetData();
     }
   }, [accessToken, loadSheetData]);
 
-  // Google Sheet Today's strictly filtered rows
-  const sheetTodayStrictRows = useMemo(() => {
-    return sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime));
-  }, [sheetRows]);
+  // Reset 5-minute countdown on sync
+  useEffect(() => {
+    setCountdown(REFRESH_INTERVAL_SECONDS);
+  }, [lastSyncTimestamp]);
+
+  // Auto-refresh interval every 5 minutes (300 seconds)
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          if (!sheetLoadingRef.current) {
+            loadSheetDataRef.current();
+          }
+          return REFRESH_INTERVAL_SECONDS;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [accessToken]);
+
+  const handleManualRefreshSheet = () => {
+    if (!accessToken) {
+      onLoginGoogle();
+    } else {
+      setCountdown(REFRESH_INTERVAL_SECONDS);
+      loadSheetData();
+    }
+  };
+
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  // Instant in-memory re-evaluation when orders or processedNotas change without triggering network requests
+  useEffect(() => {
+    if (!rawSheetResultRef.current) return;
+    setSheetRows((prevRows) => {
+      if (!prevRows || prevRows.length === 0) return prevRows;
+      const packingMap = rawSheetResultRef.current?.packingMap;
+      return prevRows.map((r) => {
+        const evalRes = evaluateNotaPackedStatus(
+          r.packingStatus,
+          r.packingTime,
+          r.orderNumber,
+          orders,
+          processedNotas,
+          packingMap
+        );
+        if (evalRes.isPacked !== r.isPacked || evalRes.resolvedStatus !== r.packingStatus) {
+          return {
+            ...r,
+            isPacked: evalRes.isPacked,
+            packingStatus: evalRes.resolvedStatus,
+            packingTime: evalRes.resolvedTime || r.packingTime,
+          };
+        }
+        return r;
+      });
+    });
+  }, [orders, processedNotas]);
+
+  // Fast reactive lookup for orders scanned in active packing session
+  const scannedOrdersLookup = useMemo(() => {
+    const exactSet = new Set<string>();
+    const normSet = new Set<string>();
+    orders.forEach((o) => {
+      const u = o.orderNumber.trim().toUpperCase();
+      if (u) exactSet.add(u);
+      const n = normalizeOrderNumber(o.orderNumber);
+      if (n) normSet.add(n);
+    });
+    return {
+      has: (orderNum?: string) => {
+        if (!orderNum) return false;
+        const u = orderNum.trim().toUpperCase();
+        if (exactSet.has(u)) return true;
+        const n = normalizeOrderNumber(orderNum);
+        return Boolean(n && normSet.has(n));
+      },
+    };
+  }, [orders]);
+
+  // Google Sheet filtered rows by selected timeframe
+  const sheetTimeframeRows = useMemo(() => {
+    if (packingTimeframe === 'today') {
+      const todayFiltered = sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime));
+      return todayFiltered.length > 0 ? todayFiltered : sheetRows;
+    }
+    if (packingTimeframe === 'yesterday') {
+      return sheetRows.filter((r) => isDateYesterday(r.adminDate, r.adminTime));
+    }
+    if (packingTimeframe === 'week') {
+      return sheetRows.filter((r) => isDateThisWeek(r.adminDate, r.adminTime));
+    }
+    return sheetRows;
+  }, [sheetRows, packingTimeframe]);
 
   const sheetTodayStats = useMemo(() => {
-    const totalToday = sheetTodayStrictRows.length;
-    const packedToday = sheetTodayStrictRows.filter((r) => r.isPacked).length;
-    const pendingToday = Math.max(0, totalToday - packedToday);
+    // 1. Cek baris sheet yang sudah packing (dari sheet atau baru di-scan saat ini)
+    const packedRowsInSheet = sheetTimeframeRows.filter(
+      (r) => r.isPacked || scannedOrdersLookup.has(r.orderNumber)
+    );
+    const pendingRowsInSheet = sheetTimeframeRows.filter(
+      (r) => !r.isPacked && !scannedOrdersLookup.has(r.orderNumber)
+    );
+
+    // 2. Pesanan yang di-scan di sesi packing tapi tidak tercatat di baris nota sheet
+    const extraScannedOrders = orders.filter(
+      (o) =>
+        !sheetTimeframeRows.some((r) => {
+          const rU = r.orderNumber.trim().toUpperCase();
+          const oU = o.orderNumber.trim().toUpperCase();
+          const rN = normalizeOrderNumber(r.orderNumber);
+          const oN = normalizeOrderNumber(o.orderNumber);
+          return rU === oU || (Boolean(oN) && rN === oN);
+        })
+    );
+
+    // Hitung tingkat keberhasilan: dibandingkan pesanan sudah packing vs belum packing
+    const packedToday = packedRowsInSheet.length + extraScannedOrders.length;
+    const pendingToday = pendingRowsInSheet.length;
+    const totalToday = packedToday + pendingToday;
     const percentToday = totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
-    const shopeeTotal = sheetTodayStrictRows.filter((r) => r.platform === 'Shopee').length;
-    const tokpedTotal = sheetTodayStrictRows.filter((r) => r.platform === 'Tokopedia/TikTok').length;
-    const shopeePacked = sheetTodayStrictRows.filter((r) => r.isPacked && r.platform === 'Shopee').length;
-    const tokpedPacked = sheetTodayStrictRows.filter((r) => r.isPacked && r.platform === 'Tokopedia/TikTok').length;
-    const shopeePending = Math.max(0, shopeeTotal - shopeePacked);
-    const tokpedPending = Math.max(0, tokpedTotal - tokpedPacked);
+
+    const shopeePacked =
+      packedRowsInSheet.filter((r) => r.platform === 'Shopee').length +
+      extraScannedOrders.filter((o) => o.platform === 'Shopee').length;
+    const shopeePending = pendingRowsInSheet.filter((r) => r.platform === 'Shopee').length;
+    const shopeeTotal = shopeePacked + shopeePending;
+
+    const tokpedPacked =
+      packedRowsInSheet.filter((r) => r.platform === 'Tokopedia/TikTok').length +
+      extraScannedOrders.filter((o) => o.platform === 'Tokopedia/TikTok').length;
+    const tokpedPending = pendingRowsInSheet.filter((r) => r.platform === 'Tokopedia/TikTok').length;
+    const tokpedTotal = tokpedPacked + tokpedPending;
 
     return {
       totalToday,
@@ -741,42 +903,63 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
       shopeePending,
       tokpedPending,
     };
-  }, [sheetTodayStrictRows]);
+  }, [sheetTimeframeRows, scannedOrdersLookup, orders]);
 
-  // Today's statistics for active session
+  // Statistics for active session filtered by timeframe
   const localTodayStats = useMemo(() => {
-    const todayNotas = processedNotas.filter((n) =>
-      isDateToday(n.date, n.timestamp, n.createdAt)
+    let targetNotas = processedNotas;
+    if (packingTimeframe === 'today') {
+      const todayNotas = processedNotas.filter((n) =>
+        isDateToday(n.date, n.timestamp, n.createdAt)
+      );
+      targetNotas = todayNotas.length > 0 ? todayNotas : processedNotas;
+    } else if (packingTimeframe === 'yesterday') {
+      targetNotas = processedNotas.filter((n) =>
+        isDateYesterday(n.date, n.timestamp, n.createdAt)
+      );
+    } else if (packingTimeframe === 'week') {
+      targetNotas = processedNotas.filter((n) =>
+        isDateThisWeek(n.date, n.timestamp, n.createdAt)
+      );
+    }
+
+    // 1. Cek nota yang sudah packing (dari processedNotas atau baru di-scan saat ini)
+    const packedNotas = targetNotas.filter(
+      (n) => n.isPacked || scannedOrdersLookup.has(n.orderNumber)
     );
-    const targetNotas = todayNotas.length > 0 ? todayNotas : processedNotas;
-    const totalToday = targetNotas.length > 0 ? targetNotas.length : orders.length;
-
-    const packedCountFromProcessed = targetNotas.filter((n) => n.isPacked).length;
-    const packedToday = Math.max(packedCountFromProcessed, orders.length);
-    const pendingToday = Math.max(0, totalToday - packedToday);
-    const percentToday =
-      totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : orders.length > 0 ? 100 : 0;
-
-    const shopeeTotal =
-      targetNotas.length > 0
-        ? targetNotas.filter((n) => n.platform === 'Shopee').length
-        : orders.filter((o) => o.platform === 'Shopee').length;
-    const tokpedTotal =
-      targetNotas.length > 0
-        ? targetNotas.filter((n) => n.platform === 'Tokopedia/TikTok').length
-        : orders.filter((o) => o.platform === 'Tokopedia/TikTok').length;
-
-    const shopeePacked = Math.max(
-      targetNotas.filter((n) => n.isPacked && n.platform === 'Shopee').length,
-      orders.filter((o) => o.platform === 'Shopee').length
-    );
-    const tokpedPacked = Math.max(
-      targetNotas.filter((n) => n.isPacked && n.platform === 'Tokopedia/TikTok').length,
-      orders.filter((o) => o.platform === 'Tokopedia/TikTok').length
+    const pendingNotas = targetNotas.filter(
+      (n) => !n.isPacked && !scannedOrdersLookup.has(n.orderNumber)
     );
 
-    const shopeePending = Math.max(0, shopeeTotal - shopeePacked);
-    const tokpedPending = Math.max(0, tokpedTotal - tokpedPacked);
+    // 2. Pesanan di-scan di sesi packing yang belum ada di targetNotas
+    const extraScannedOrders = orders.filter(
+      (o) =>
+        !targetNotas.some((n) => {
+          const nU = n.orderNumber.trim().toUpperCase();
+          const oU = o.orderNumber.trim().toUpperCase();
+          const nN = normalizeOrderNumber(n.orderNumber);
+          const oN = normalizeOrderNumber(o.orderNumber);
+          return nU === oU || (Boolean(oN) && nN === oN);
+        })
+    );
+
+    // Hitung tingkat keberhasilan: dibandingkan pesanan sudah packing vs belum packing
+    const packedToday = packedNotas.length + extraScannedOrders.length;
+    const pendingToday = pendingNotas.length;
+    const totalToday = packedToday + pendingToday;
+    const percentToday = totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
+
+    const shopeePacked =
+      packedNotas.filter((n) => n.platform === 'Shopee').length +
+      extraScannedOrders.filter((o) => o.platform === 'Shopee').length;
+    const shopeePending = pendingNotas.filter((n) => n.platform === 'Shopee').length;
+    const shopeeTotal = shopeePacked + shopeePending;
+
+    const tokpedPacked =
+      packedNotas.filter((n) => n.platform === 'Tokopedia/TikTok').length +
+      extraScannedOrders.filter((o) => o.platform === 'Tokopedia/TikTok').length;
+    const tokpedPending = pendingNotas.filter((n) => n.platform === 'Tokopedia/TikTok').length;
+    const tokpedTotal = tokpedPacked + tokpedPending;
 
     return {
       totalToday,
@@ -790,7 +973,20 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
       shopeePending,
       tokpedPending,
     };
-  }, [processedNotas, orders]);
+  }, [processedNotas, packingTimeframe, scannedOrdersLookup, orders]);
+
+  const timeframeLabel = useMemo(() => {
+    switch (packingTimeframe) {
+      case 'today':
+        return 'Hari Ini';
+      case 'yesterday':
+        return 'Kemarin';
+      case 'week':
+        return 'Minggu Ini';
+      case 'all':
+        return 'Semua Data';
+    }
+  }, [packingTimeframe]);
 
   // Active performance metrics chosen by user or auto-fallback
   const activePerformanceStats = useMemo(() => {
@@ -798,15 +994,17 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
       return {
         source: 'sheet' as const,
         label: `Google Sheet ("${sheetResolvedTab}" ↔ "${sheetResolvedPackingTab}")`,
+        timeframeLabel,
         ...sheetTodayStats,
       };
     }
     return {
       source: 'local' as const,
       label: 'Sesi Scan Lokal',
+      timeframeLabel,
       ...localTodayStats,
     };
-  }, [todayStatsSource, sheetRows.length, sheetTodayStats, localTodayStats, sheetResolvedTab, sheetResolvedPackingTab]);
+  }, [todayStatsSource, sheetRows.length, sheetTodayStats, localTodayStats, sheetResolvedTab, sheetResolvedPackingTab, timeframeLabel]);
 
   return (
     <div className="space-y-6">
@@ -828,7 +1026,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-bold text-base sm:text-lg text-white tracking-tight">
-                  Performa Packing Hari Ini
+                  Performa Packing {activePerformanceStats.timeframeLabel}
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   {activePerformanceStats.percentToday}% Berhasil Di-Packing
@@ -853,6 +1051,58 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
 
           {/* Quick Tools & Source Switcher */}
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
+            {/* Timeframe Filter Buttons */}
+            <div className="flex items-center gap-0.5 bg-slate-800/90 p-1 rounded-xl border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setPackingTimeframe('today')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  packingTimeframe === 'today'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
+                }`}
+                title="Tampilkan pesanan hari ini"
+              >
+                Hari Ini
+              </button>
+              <button
+                type="button"
+                onClick={() => setPackingTimeframe('yesterday')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  packingTimeframe === 'yesterday'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
+                }`}
+                title="Tampilkan pesanan kemarin"
+              >
+                Kemarin
+              </button>
+              <button
+                type="button"
+                onClick={() => setPackingTimeframe('week')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  packingTimeframe === 'week'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
+                }`}
+                title="Tampilkan pesanan minggu ini"
+              >
+                Minggu
+              </button>
+              <button
+                type="button"
+                onClick={() => setPackingTimeframe('all')}
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  packingTimeframe === 'all'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
+                }`}
+                title="Tampilkan semua data pesanan"
+              >
+                Semua
+              </button>
+            </div>
+
             {sheetRows.length > 0 && (
               <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
                 <button
@@ -890,12 +1140,15 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
               <button
                 type="button"
                 id="btn-metric-refresh-sheet"
-                onClick={loadSheetData}
+                onClick={handleManualRefreshSheet}
                 disabled={sheetLoading}
-                className="p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-xl text-xs transition-all cursor-pointer"
-                title="Segarkan data dari Google Sheets"
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Segarkan data dari Google Sheets (Auto-refresh setiap 5 menit)"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${sheetLoading ? 'animate-spin text-emerald-400' : ''}`} />
+                <span className="font-mono text-[11px] bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700 text-slate-300">
+                  {formatCountdown(countdown)}
+                </span>
               </button>
             )}
 
@@ -947,17 +1200,17 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                     : activePerformanceStats.percentToday >= 50
                     ? '⏳ Sedang Berjalan'
                     : activePerformanceStats.totalToday === 0
-                    ? 'Belum Ada Nota'
+                    ? 'Belum Ada Pesanan'
                     : '⚠️ Perlu Dikejar'}
                 </span>
               </div>
 
               <div className="flex items-baseline gap-2 mt-3">
-                <span className="text-4xl sm:text-5xl font-black text-emerald-400 tracking-tight">
+                <span className="text-4xl sm:text-5xl font-black text-emerald-400 tracking-tight transition-all duration-300">
                   {activePerformanceStats.percentToday}%
                 </span>
                 <span className="text-xs font-semibold text-slate-300">
-                  Ter-Packing Hari Ini
+                  Berhasil Di-Packing
                 </span>
               </div>
 
@@ -965,34 +1218,47 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                 {activePerformanceStats.totalToday > 0 ? (
                   <>
                     <strong className="text-emerald-300 font-bold">
-                      {activePerformanceStats.packedToday}
+                      {activePerformanceStats.packedToday} sudah packing
                     </strong>{' '}
-                    dari total{' '}
+                    dibandingkan{' '}
+                    <strong className="text-amber-300 font-bold">
+                      {activePerformanceStats.pendingToday} belum packing
+                    </strong>{' '}
+                    (Total{' '}
                     <strong className="text-white font-bold">
-                      {activePerformanceStats.totalToday} nota masuk
-                    </strong>{' '}
-                    hari ini berhasil di-packing.
+                      {activePerformanceStats.totalToday} pesanan
+                    </strong>).
                   </>
                 ) : (
-                  'Belum ada nota masuk yang tercatat untuk tanggal hari ini.'
+                  'Belum ada data pesanan tercatat untuk periode ini. Scan nota atau periksa data Google Sheet.'
                 )}
               </p>
+
+              {/* Dynamic comparison formula feedback */}
+              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
+                <span className="text-slate-500">Rumus:</span>
+                <span className="bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700/80 text-emerald-300">
+                  ({activePerformanceStats.packedToday} Sudah ÷ {activePerformanceStats.totalToday} Total) × 100% = {activePerformanceStats.percentToday}%
+                </span>
+              </div>
             </div>
 
             {/* Visual Progress Bar */}
             <div className="mt-4 pt-3 border-t border-slate-700/60">
               <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-700">
                 <div
-                  className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                  className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500 ease-out"
                   style={{ width: `${activePerformanceStats.percentToday}%` }}
                 />
               </div>
-              <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1.5">
-                <span>
-                  Selesai: {activePerformanceStats.packedToday} ({activePerformanceStats.percentToday}%)
+              <div className="flex items-center justify-between text-[11px] font-medium mt-1.5">
+                <span className="text-emerald-300 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                  Sudah: {activePerformanceStats.packedToday} ({activePerformanceStats.percentToday}%)
                 </span>
-                <span>
-                  Sisa: {activePerformanceStats.pendingToday} ({activePerformanceStats.totalToday > 0 ? 100 - activePerformanceStats.percentToday : 0}%)
+                <span className="text-amber-300 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                  Belum: {activePerformanceStats.pendingToday} ({activePerformanceStats.totalToday > 0 ? 100 - activePerformanceStats.percentToday : 0}%)
                 </span>
               </div>
             </div>
@@ -1000,7 +1266,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
 
           {/* 3 Metric Stat Cards (7 cols) */}
           <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Card 1: TOTAL NOTA MASUK HARI INI */}
+            {/* Card 1: TOTAL PESANAN HARI INI */}
             <div
               id="card-metric-total-incoming"
               className="bg-slate-800/60 border border-slate-700/70 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between"
@@ -1008,7 +1274,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
               <div>
                 <div className="flex items-center justify-between text-indigo-300 mb-1.5">
                   <span className="text-[11px] font-bold uppercase tracking-wider">
-                    Total Nota Masuk
+                    Total Pesanan
                   </span>
                   <Boxes className="w-4 h-4 text-indigo-400 shrink-0" />
                 </div>
@@ -1016,10 +1282,10 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                   <span className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                     {sheetLoading && todayStatsSource === 'sheet' ? '...' : activePerformanceStats.totalToday}
                   </span>
-                  <span className="text-xs text-slate-400 font-semibold">Nota</span>
+                  <span className="text-xs text-slate-400 font-semibold">Pesanan</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Nota masuk tanggal hari ini
+                  Sudah ({activePerformanceStats.packedToday}) + Belum ({activePerformanceStats.pendingToday})
                 </p>
               </div>
               <div className="mt-3 pt-2 border-t border-slate-700/60 text-[10px] text-slate-300 flex items-center justify-between">
@@ -1028,7 +1294,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
               </div>
             </div>
 
-            {/* Card 2: BERHASIL DI-PACKING HARI INI */}
+            {/* Card 2: SUDAH DI-PACKING HARI INI */}
             <div
               id="card-metric-total-packed"
               className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between"
@@ -1036,7 +1302,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
               <div>
                 <div className="flex items-center justify-between text-emerald-300 mb-1.5">
                   <span className="text-[11px] font-bold uppercase tracking-wider">
-                    Berhasil Di-Packing
+                    Sudah Di-Packing
                   </span>
                   <PackageCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                 </div>
@@ -1044,10 +1310,10 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                   <span className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">
                     {sheetLoading && todayStatsSource === 'sheet' ? '...' : activePerformanceStats.packedToday}
                   </span>
-                  <span className="text-xs text-emerald-200/80 font-semibold">Nota</span>
+                  <span className="text-xs text-emerald-200/80 font-semibold">Pesanan</span>
                 </div>
                 <p className="text-[11px] text-emerald-300/80 mt-1">
-                  {activePerformanceStats.percentToday}% telah selesai packing
+                  {activePerformanceStats.percentToday}% selesai packing
                 </p>
               </div>
               <div className="mt-3 pt-2 border-t border-emerald-800/60 text-[10px] text-emerald-200 flex items-center justify-between">
@@ -1076,12 +1342,12 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                   <span className={`text-2xl sm:text-3xl font-black tracking-tight ${activePerformanceStats.pendingToday > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
                     {sheetLoading && todayStatsSource === 'sheet' ? '...' : activePerformanceStats.pendingToday}
                   </span>
-                  <span className="text-xs font-semibold">Nota</span>
+                  <span className="text-xs font-semibold">Pesanan</span>
                 </div>
                 <p className="text-[11px] mt-1 opacity-80">
                   {activePerformanceStats.pendingToday > 0
-                    ? 'Menunggu tim packing'
-                    : 'Semua beres tanpa sisa!'}
+                    ? 'Menunggu di-scan packing'
+                    : 'Semua sudah selesai packing!'}
                 </p>
               </div>
               <div className="mt-3 pt-2 border-t border-slate-700/60 text-[10px] flex items-center justify-between">
@@ -1099,13 +1365,13 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
             <span>
               {activePerformanceStats.totalToday > 0 ? (
                 <>
-                  Persentase performa packing dihitung otomatis:{' '}
+                  Tingkat keberhasilan = Sudah Packing / (Sudah Packing + Belum Packing):{' '}
                   <strong className="text-slate-200">
                     ({activePerformanceStats.packedToday} / {activePerformanceStats.totalToday}) × 100% = {activePerformanceStats.percentToday}%
                   </strong>
                 </>
               ) : (
-                'Menunggu data nota masuk hari ini untuk menghitung persentase performa packing.'
+                'Menunggu data pesanan untuk menghitung persentase tingkat keberhasilan packing.'
               )}
             </span>
           </div>

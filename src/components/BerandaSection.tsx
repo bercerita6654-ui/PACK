@@ -114,6 +114,18 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
   const [copiedReport, setCopiedReport] = useState<boolean>(false);
   const [activeModalType, setActiveModalType] = useState<'all' | 'pending' | 'overdue' | 'packed' | null>(null);
 
+  // Cached raw sheet result and state refs to prevent redundant Google Sheets API calls
+  const rawSheetResultRef = useRef<any | null>(null);
+  const packedOrdersRef = useRef(packedOrders);
+  useEffect(() => {
+    packedOrdersRef.current = packedOrders;
+  }, [packedOrders]);
+
+  const localNotasRef = useRef(localNotas);
+  useEffect(() => {
+    localNotasRef.current = localNotas;
+  }, [localNotas]);
+
   // Fetch data from Google Sheets - cross-referencing "Nota Diproses" & "Packing Reg"
   const loadSheetData = useCallback(async () => {
     if (!accessToken) {
@@ -132,6 +144,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
         targetNotaTab,
         targetPackingTab
       );
+      rawSheetResultRef.current = result;
       setSheetResolvedTab(result.notaTabName);
       setSheetResolvedPackingTab(result.packingTabName);
       setSheetTotalPackingInSheet(result.totalPackingCount);
@@ -382,14 +395,44 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
     } finally {
       setSheetLoading(false);
     }
-  }, [accessToken, targetSpreadsheetId, targetNotaTab, targetPackingTab, packedOrders, localNotas, onTokenExpired]);
+  }, [accessToken, targetSpreadsheetId, targetNotaTab, targetPackingTab, onTokenExpired]);
 
-  // Load sheet data on initial mount or when accessToken / sync occurs
+  // Load sheet data on initial mount or when spreadsheet/sync occurs
   useEffect(() => {
     if (accessToken) {
       loadSheetData();
     }
-  }, [accessToken, lastSyncTimestamp, loadSheetData]);
+  }, [accessToken, targetSpreadsheetId, targetNotaTab, targetPackingTab, lastSyncTimestamp, loadSheetData]);
+
+  // Instantly re-evaluate status of loaded sheet rows in-memory when orders are scanned locally (zero API calls)
+  useEffect(() => {
+    if (!rawSheetResultRef.current) return;
+    setSheetRows((prevRows) => {
+      if (!prevRows || prevRows.length === 0) return prevRows;
+      const packingMap = rawSheetResultRef.current?.packingMap;
+      return prevRows.map((r) => {
+        const evalRes = evaluateNotaPackedStatus(
+          r.packingStatus,
+          r.packingTime,
+          r.orderNumber,
+          packedOrders,
+          localNotas,
+          packingMap
+        );
+        if (evalRes.isPacked !== r.isPacked || evalRes.resolvedStatus !== r.packingStatus) {
+          return {
+            ...r,
+            isPacked: evalRes.isPacked,
+            packingStatus: evalRes.resolvedStatus,
+            packingTime: evalRes.resolvedTime || r.packingTime,
+            matchedFromPackingReg: evalRes.matchedSource === 'packing_reg_sheet' || r.matchedFromPackingReg,
+            matchedSource: evalRes.matchedSource || r.matchedSource,
+          };
+        }
+        return r;
+      });
+    });
+  }, [packedOrders, localNotas]);
 
   // 5-minute auto-refresh cycle (300 seconds)
   const REFRESH_INTERVAL_SECONDS = 300;

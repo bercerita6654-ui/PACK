@@ -211,6 +211,17 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const [sheetStatusFilter, setSheetStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
   const [sheetTimeframe, setSheetTimeframe] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>('today');
 
+  // Cached raw sheet result to prevent redundant Google Sheets API calls
+  const rawSheetResultRef = useRef<any | null>(null);
+  const packedOrdersRef = useRef(packedOrders);
+  useEffect(() => {
+    packedOrdersRef.current = packedOrders;
+  }, [packedOrders]);
+  const notasRef = useRef(notas);
+  useEffect(() => {
+    notasRef.current = notas;
+  }, [notas]);
+
   // Fetch data from Google Sheets - cross-referencing "Nota Diproses" & "Packing Reg"
   const loadSheetData = useCallback(async () => {
     if (!accessToken) {
@@ -229,6 +240,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
         targetSheetTab,
         'Packing Reg'
       );
+      rawSheetResultRef.current = result;
       setSheetResolvedTab(result.notaTabName);
       setSheetResolvedPackingTab(result.packingTabName);
       setSheetTotalPackingInSheet(result.totalPackingCount);
@@ -473,14 +485,44 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     } finally {
       setSheetLoading(false);
     }
-  }, [accessToken, targetSpreadsheetId, targetSheetTab, onTokenExpired, packedOrders, notas]);
+  }, [accessToken, targetSpreadsheetId, targetSheetTab, onTokenExpired]);
 
   // Sync / fetch on mount or when accessToken/lastSyncTimestamp change
   useEffect(() => {
     if (accessToken) {
       loadSheetData();
     }
-  }, [accessToken, lastSyncTimestamp, loadSheetData]);
+  }, [accessToken, targetSpreadsheetId, targetSheetTab, lastSyncTimestamp, loadSheetData]);
+
+  // Instantly re-evaluate status of loaded sheet rows in-memory when orders are scanned locally (zero API calls)
+  useEffect(() => {
+    if (!rawSheetResultRef.current) return;
+    setSheetRows((prevRows) => {
+      if (!prevRows || prevRows.length === 0) return prevRows;
+      const packingMap = rawSheetResultRef.current?.packingMap;
+      return prevRows.map((r) => {
+        const evalRes = evaluateNotaPackedStatus(
+          r.packingStatus,
+          r.packingTime,
+          r.orderNumber,
+          packedOrders,
+          notas,
+          packingMap
+        );
+        if (evalRes.isPacked !== r.isPacked || evalRes.resolvedStatus !== r.packingStatus) {
+          return {
+            ...r,
+            isPacked: evalRes.isPacked,
+            packingStatus: evalRes.resolvedStatus,
+            packingTime: evalRes.resolvedTime || r.packingTime,
+            matchedFromPackingReg: evalRes.matchedSource === 'packing_reg_sheet' || r.matchedFromPackingReg,
+            matchedSource: evalRes.matchedSource || r.matchedSource,
+          };
+        }
+        return r;
+      });
+    });
+  }, [packedOrders, notas]);
 
   // Google Sheet timeframe filtering for the top dashboard (Default: 'today' / Harian)
   const dashboardFilteredSheetRows = useMemo(() => {
@@ -719,19 +761,64 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     return sheetRows.filter((r) => isDateToday(r.adminDate, r.adminTime));
   }, [sheetRows]);
 
+  // Fast reactive lookup for orders scanned in active packing session
+  const scannedOrdersLookup = useMemo(() => {
+    const exactSet = new Set<string>();
+    const normSet = new Set<string>();
+    packedOrders.forEach((o) => {
+      const u = o.orderNumber.trim().toUpperCase();
+      if (u) exactSet.add(u);
+      const n = normalizeOrderNumber(o.orderNumber);
+      if (n) normSet.add(n);
+    });
+    return {
+      has: (orderNum?: string) => {
+        if (!orderNum) return false;
+        const u = orderNum.trim().toUpperCase();
+        if (exactSet.has(u)) return true;
+        const n = normalizeOrderNumber(orderNum);
+        return Boolean(n && normSet.has(n));
+      },
+    };
+  }, [packedOrders]);
+
   // Today's statistics for Google Sheet (Tab 'Nota Diproses' ↔ 'Packing Reg')
   const sheetTodayStats = useMemo(() => {
-    const totalToday = sheetTodayStrictRows.length;
-    const packedToday = sheetTodayStrictRows.filter((r) => r.isPacked).length;
-    const pendingToday = totalToday - packedToday;
+    const packedRowsInSheet = sheetTodayStrictRows.filter(
+      (r) => r.isPacked || scannedOrdersLookup.has(r.orderNumber)
+    );
+    const pendingRowsInSheet = sheetTodayStrictRows.filter(
+      (r) => !r.isPacked && !scannedOrdersLookup.has(r.orderNumber)
+    );
+
+    const extraScannedOrders = packedOrders.filter(
+      (o) =>
+        !sheetTodayStrictRows.some((r) => {
+          const rU = r.orderNumber.trim().toUpperCase();
+          const oU = o.orderNumber.trim().toUpperCase();
+          const rN = normalizeOrderNumber(r.orderNumber);
+          const oN = normalizeOrderNumber(o.orderNumber);
+          return rU === oU || (Boolean(oN) && rN === oN);
+        })
+    );
+
+    const packedToday = packedRowsInSheet.length + extraScannedOrders.length;
+    const pendingToday = pendingRowsInSheet.length;
+    const totalToday = packedToday + pendingToday;
     const percentToday =
       totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
-    const shopeeTotal = sheetTodayStrictRows.filter((r) => r.platform === 'Shopee').length;
-    const tokpedTotal = sheetTodayStrictRows.filter((r) => r.platform === 'Tokopedia/TikTok').length;
-    const shopeePacked = sheetTodayStrictRows.filter((r) => r.isPacked && r.platform === 'Shopee').length;
-    const tokpedPacked = sheetTodayStrictRows.filter((r) => r.isPacked && r.platform === 'Tokopedia/TikTok').length;
-    const shopeePending = shopeeTotal - shopeePacked;
-    const tokpedPending = tokpedTotal - tokpedPacked;
+
+    const shopeePacked =
+      packedRowsInSheet.filter((r) => r.platform === 'Shopee').length +
+      extraScannedOrders.filter((o) => o.platform === 'Shopee').length;
+    const shopeePending = pendingRowsInSheet.filter((r) => r.platform === 'Shopee').length;
+    const shopeeTotal = shopeePacked + shopeePending;
+
+    const tokpedPacked =
+      packedRowsInSheet.filter((r) => r.platform === 'Tokopedia/TikTok').length +
+      extraScannedOrders.filter((o) => o.platform === 'Tokopedia/TikTok').length;
+    const tokpedPending = pendingRowsInSheet.filter((r) => r.platform === 'Tokopedia/TikTok').length;
+    const tokpedTotal = tokpedPacked + tokpedPending;
 
     return {
       totalToday,
@@ -746,7 +833,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
       tokpedPending,
       isFilteredByDate: sheetTodayStrictRows.length > 0,
     };
-  }, [sheetTodayStrictRows]);
+  }, [sheetTodayStrictRows, scannedOrdersLookup, packedOrders]);
 
   // Today's statistics for active session (using effectiveNotas)
   const localTodayStats = useMemo(() => {
@@ -757,17 +844,41 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
     // If specific date parsed notas exist, use them, otherwise treat active session notas as today's batch
     const target = todayNotas.length > 0 ? todayNotas : effectiveNotas;
 
-    const totalToday = target.length;
-    const packedToday = target.filter((n) => n.isPacked).length;
-    const pendingToday = totalToday - packedToday;
+    const packedNotas = target.filter(
+      (n) => n.isPacked || scannedOrdersLookup.has(n.orderNumber)
+    );
+    const pendingNotas = target.filter(
+      (n) => !n.isPacked && !scannedOrdersLookup.has(n.orderNumber)
+    );
+
+    const extraScannedOrders = packedOrders.filter(
+      (o) =>
+        !target.some((n) => {
+          const nU = n.orderNumber.trim().toUpperCase();
+          const oU = o.orderNumber.trim().toUpperCase();
+          const nN = normalizeOrderNumber(n.orderNumber);
+          const oN = normalizeOrderNumber(o.orderNumber);
+          return nU === oU || (Boolean(oN) && nN === oN);
+        })
+    );
+
+    const packedToday = packedNotas.length + extraScannedOrders.length;
+    const pendingToday = pendingNotas.length;
+    const totalToday = packedToday + pendingToday;
     const percentToday =
       totalToday > 0 ? Math.round((packedToday / totalToday) * 100) : 0;
-    const shopeeTotal = target.filter((n) => n.platform === 'Shopee').length;
-    const tokpedTotal = target.filter((n) => n.platform === 'Tokopedia/TikTok').length;
-    const shopeePacked = target.filter((n) => n.isPacked && n.platform === 'Shopee').length;
-    const tokpedPacked = target.filter((n) => n.isPacked && n.platform === 'Tokopedia/TikTok').length;
-    const shopeePending = shopeeTotal - shopeePacked;
-    const tokpedPending = tokpedTotal - tokpedPacked;
+
+    const shopeePacked =
+      packedNotas.filter((n) => n.platform === 'Shopee').length +
+      extraScannedOrders.filter((o) => o.platform === 'Shopee').length;
+    const shopeePending = pendingNotas.filter((n) => n.platform === 'Shopee').length;
+    const shopeeTotal = shopeePacked + shopeePending;
+
+    const tokpedPacked =
+      packedNotas.filter((n) => n.platform === 'Tokopedia/TikTok').length +
+      extraScannedOrders.filter((o) => o.platform === 'Tokopedia/TikTok').length;
+    const tokpedPending = pendingNotas.filter((n) => n.platform === 'Tokopedia/TikTok').length;
+    const tokpedTotal = tokpedPacked + tokpedPending;
 
     return {
       totalToday,

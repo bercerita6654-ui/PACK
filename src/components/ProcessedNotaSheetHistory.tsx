@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   FileSpreadsheet,
   RefreshCw,
@@ -204,6 +204,9 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
 
   const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit`;
 
+  // Cached raw sheet result for in-memory status updates
+  const rawSheetResultRef = useRef<any | null>(null);
+
   // Fetch data from Google Sheet tab "Nota Diproses"
   const loadSheetHistory = useCallback(async () => {
     if (externalOnRefresh) {
@@ -226,6 +229,7 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
         targetSheetTab,
         'Packing Reg'
       );
+      rawSheetResultRef.current = result;
       setInternalResolvedTabName(result.notaTabName);
 
       // Detect header columns dynamically
@@ -470,8 +474,6 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     targetSheetTab,
     onTokenExpired,
     externalOnRefresh,
-    packedOrders,
-    localNotas,
   ]);
 
   // Initial load & when lastSyncTimestamp or accessToken updates
@@ -479,7 +481,37 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
     if (!isControlled && accessToken) {
       loadSheetHistory();
     }
-  }, [isControlled, accessToken, lastSyncTimestamp, loadSheetHistory]);
+  }, [isControlled, accessToken, targetSpreadsheetId, targetSheetTab, lastSyncTimestamp, loadSheetHistory]);
+
+  // Reactive in-memory update for internal rows when local scan happens
+  useEffect(() => {
+    if (isControlled || !rawSheetResultRef.current) return;
+    setInternalSheetRows((prevRows) => {
+      if (!prevRows || prevRows.length === 0) return prevRows;
+      const packingMap = rawSheetResultRef.current?.packingMap;
+      return prevRows.map((r) => {
+        const evalRes = evaluateNotaPackedStatus(
+          r.packingStatus,
+          r.packingTime,
+          r.orderNumber,
+          packedOrders,
+          localNotas,
+          packingMap
+        );
+        if (evalRes.isPacked !== r.isPacked || evalRes.resolvedStatus !== r.packingStatus) {
+          return {
+            ...r,
+            isPacked: evalRes.isPacked,
+            packingStatus: evalRes.resolvedStatus,
+            packingTime: evalRes.resolvedTime || r.packingTime,
+            matchedFromPackingReg: evalRes.matchedSource === 'packing_reg_sheet' || r.matchedFromPackingReg,
+            matchedSource: evalRes.matchedSource || r.matchedSource,
+          };
+        }
+        return r;
+      });
+    });
+  }, [isControlled, packedOrders, localNotas]);
 
   // Statistics
   const totalInSheet = sheetRows.length;
