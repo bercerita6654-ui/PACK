@@ -659,23 +659,54 @@ export interface GeneratePackingReportParams {
 }
 
 /**
+ * Helper to extract short HH:mm time from various date/time/log strings
+ * e.g. "Sabtu, 19 September 2026 12.56.14 (260919DW7Q5D9G)" -> "12:56"
+ * e.g. "2026-09-19 12:56:14" -> "12:56"
+ * e.g. "12.56.14" -> "12:56"
+ * e.g. "12:56" -> "12:56"
+ */
+export function extractShortTime(timeStr?: string, fallbackTime?: string): string {
+  if (!timeStr || timeStr.trim() === '' || timeStr === '-') {
+    return fallbackTime || '';
+  }
+  const clean = timeStr.trim();
+
+  // Match time with colon or dot separator e.g. 12:56:14 or 12.56.14 or 12:56 or 12.56
+  const timeMatch = clean.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)(?:[:.][0-5]\d)?\b/);
+  if (timeMatch) {
+    const hh = timeMatch[1].padStart(2, '0');
+    const mm = timeMatch[2];
+    return `${hh}:${mm}`;
+  }
+
+  const parsed = new Date(clean);
+  if (!isNaN(parsed.getTime())) {
+    const hh = String(parsed.getHours()).padStart(2, '0');
+    const mm = String(parsed.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+
+  return fallbackTime || clean;
+}
+
+/**
  * Generates formatted text report for Packing Status (Data Google Sheets).
  *
  * Example Output:
  * *Update Harian Pesanan REG*
- * Jumat, 11 September 2026 (09:28)
+ * Sabtu, 19 September 2026 (12:58)
  *
- * *TOTAL HARIAN  :*
- * - Shopee : 17
- * - Tokped : 4
+ * *TOTAL HARIAN  : 21 nota*
+ * - Shopee : 14
+ * - Tokped : 7
  *
- * *SUDAH PACKING : (last update 09:28)*
- * - Shopee : 0
+ * *SUDAH PACKING : 19 nota (last update : 12:56)*
+ * - Shopee : 12
+ * - Tokped : 7
+ *
+ * *BELUM PACKING : 2 nota*
+ * - Shopee : 2
  * - Tokped : 0
- *
- * *BELUM PACKING : 21 nota*
- * - Shopee : 17
- * - Tokped : 4
  */
 export function generatePackingReportText({
   totalCount,
@@ -692,7 +723,7 @@ export function generatePackingReportText({
       ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, now.getHours(), now.getMinutes())
       : now;
 
-  // Indonesian Day Name in Title Case (e.g. Jumat)
+  // Indonesian Day Name in Title Case (e.g. Sabtu)
   const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
   const dayName = dayNames[reportDate.getDay()];
 
@@ -732,8 +763,7 @@ export function generatePackingReportText({
     totalLabel = 'TOTAL NOTA';
   }
 
-  const lastUpdate =
-    lastPackedTimeStr && lastPackedTimeStr !== '-' ? lastPackedTimeStr : timeFormatted;
+  const shortLastUpdate = extractShortTime(lastPackedTimeStr, timeFormatted);
 
   const shopeeTotal = breakdown?.total?.shopee ?? totalCount;
   const tokpedTotal = breakdown?.total?.tokped ?? 0;
@@ -765,10 +795,10 @@ export function generatePackingReportText({
   return `*${titleText}*
 ${dayName}, ${dateFormatted} (${timeFormatted})
 
-*${totalLabel}  :*
+*${totalLabel}  : ${totalCount} nota*
 ${totalLines}
 
-*SUDAH PACKING : (last update ${lastUpdate})*
+*SUDAH PACKING : ${packedCount} nota (last update : ${shortLastUpdate})*
 ${packedLines}
 
 *BELUM PACKING : ${pendingCount} nota*

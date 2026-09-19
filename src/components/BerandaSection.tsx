@@ -13,6 +13,10 @@ import {
   Layers,
   Info,
   ArrowRight,
+  TrendingUp,
+  Percent,
+  Boxes,
+  PackageCheck,
 } from 'lucide-react';
 import {
   PlatformType,
@@ -914,6 +918,130 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 {sheetRows.length}
               </span>
             </button>
+          </div>
+        </div>
+
+        {/* Hero Performance Card & Breakdown Grid */}
+        <div
+          id="packing-performance-summary-top"
+          className="mt-5 bg-slate-800/80 rounded-2xl p-4 sm:p-5 border border-slate-700/80 shadow-md relative overflow-hidden space-y-4 z-10"
+        >
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl shrink-0">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="font-bold text-base sm:text-lg text-white tracking-tight">
+                    Performa Packing {sheetTimeframeLabel}
+                  </h4>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {sheetProgressPercent}% Berhasil Di-Packing
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Tingkat keberhasilan pemrosesan pesanan dari Google Sheets
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full">
+            {/* Hero Performance Card (Full Width) */}
+            <div
+              id="card-metric-hero-performance"
+              className="w-full bg-slate-900/80 border border-slate-700/90 rounded-xl p-4 sm:p-5 flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Percent className="w-3.5 h-3.5 text-emerald-400" />
+                    Tingkat Keberhasilan Packing
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                      sheetProgressPercent === 100
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : sheetProgressPercent >= 80
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : sheetProgressPercent >= 50
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : sheetTotalCount === 0
+                        ? 'bg-slate-700/60 text-slate-400 border-slate-600'
+                        : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    }`}
+                  >
+                    {sheetProgressPercent === 100
+                      ? '✓ 100% Selesai'
+                      : sheetProgressPercent >= 80
+                      ? '⚡ Performa Tinggi'
+                      : sheetProgressPercent >= 50
+                      ? '⏳ Sedang Berjalan'
+                      : sheetTotalCount === 0
+                      ? 'Belum Ada Pesanan'
+                      : '⚠️ Perlu Dikejar'}
+                  </span>
+                </div>
+
+                <div className="flex items-baseline gap-2 mt-3">
+                  <span className="text-4xl sm:text-5xl font-black text-emerald-400 tracking-tight transition-all duration-300">
+                    {sheetLoading ? '...' : `${sheetProgressPercent}%`}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-300">
+                    Berhasil Di-Packing
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-300 mt-1">
+                  {sheetTotalCount > 0 ? (
+                    <>
+                      <strong className="text-emerald-300 font-bold">
+                        {sheetPackedCount} sudah packing
+                      </strong>{' '}
+                      dibandingkan{' '}
+                      <strong className="text-amber-300 font-bold">
+                        {sheetPendingCount} belum packing
+                      </strong>{' '}
+                      (Total{' '}
+                      <strong className="text-white font-bold">
+                        {sheetTotalCount} pesanan
+                      </strong>).
+                    </>
+                  ) : (
+                    'Belum ada data pesanan tercatat untuk periode ini. Periksa data Google Sheet.'
+                  )}
+                </p>
+
+                {/* Dynamic comparison formula feedback */}
+                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
+                  <span className="text-slate-500">Rumus:</span>
+                  <span className="bg-slate-950/90 px-2 py-0.5 rounded border border-slate-700/80 text-emerald-300">
+                    ({sheetPackedCount} Sudah ÷ {sheetTotalCount} Total) × 100% = {sheetProgressPercent}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Visual Progress Bar */}
+              <div className="mt-4 pt-3 border-t border-slate-800">
+                <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-700">
+                  <div
+                    className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500 ease-out"
+                    style={{ width: `${sheetProgressPercent}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] font-medium mt-1.5">
+                  <span className="text-emerald-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                    Sudah: {sheetPackedCount} ({sheetProgressPercent}%)
+                  </span>
+                  <span className="text-amber-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                    Belum: {sheetPendingCount} ({sheetTotalCount > 0 ? 100 - sheetProgressPercent : 0}%)
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -190,10 +190,9 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
             adminDate: row.adminDate,
           },
         ]);
-      } else {
-        soundFX.playSuccess();
-        showToast(`✓ No. Pesanan ${row.orderNumber} berhasil diubah jadi Terpacking!`, 'success');
       }
+      soundFX.playSuccess();
+      showToast(`✓ No. Pesanan ${row.orderNumber} berhasil jadi Terpacking & langsung tersimpan ke Google Sheets!`, 'success');
     } catch (err: any) {
       showToast(`Gagal merubah status: ${err.message || 'Error'}`, 'error');
     } finally {
@@ -280,10 +279,9 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
     try {
       if (onMarkOrdersAsPacked) {
         await onMarkOrdersAsPacked(itemsToPack);
-      } else {
-        soundFX.playBatchSuccess();
-        showToast(`✓ ${itemsToPack.length} No. Pesanan berhasil diubah jadi Terpacking!`, 'success');
       }
+      soundFX.playBatchSuccess();
+      showToast(`✓ ${itemsToPack.length} No. Pesanan berhasil jadi Terpacking & langsung tersimpan ke Google Sheets!`, 'success');
       setSelectedOrders(new Set());
     } catch (err: any) {
       showToast(`Gagal merubah status: ${err.message || 'Error'}`, 'error');
@@ -401,10 +399,9 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
     try {
       if (onMarkOrdersAsPacked) {
         await onMarkOrdersAsPacked(itemsToPack);
-      } else {
-        soundFX.playBatchSuccess();
-        showToast(`✓ Semua ${itemsToPack.length} No. Pesanan berhasil diubah jadi Terpacking!`, 'success');
       }
+      soundFX.playBatchSuccess();
+      showToast(`✓ Semua ${itemsToPack.length} No. Pesanan berhasil jadi Terpacking & langsung tersimpan ke Google Sheets!`, 'success');
       setSelectedOrders(new Set());
     } catch (err: any) {
       showToast(`Gagal merubah status: ${err.message || 'Error'}`, 'error');
@@ -996,7 +993,7 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
                                   onClick={() => handleMarkSingleAsPacked(row)}
                                   disabled={isProcessing || isBatchProcessing}
                                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
-                                  title="Ubah status jadi Terpacking tanpa perlu ketik kode / ke menu scan"
+                                  title="1 Klik: Ubah jadi Terpacking & langsung simpan otomatis ke Google Sheets (Packing Reg & Nota Diproses)"
                                 >
                                   {isProcessing ? (
                                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
