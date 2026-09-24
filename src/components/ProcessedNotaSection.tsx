@@ -30,8 +30,10 @@ import {
   PackageCheck,
   Boxes,
   Percent,
+  Camera,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { CameraBarcodeScannerModal } from './CameraBarcodeScannerModal';
 import { ProcessedNota, PlatformType, PackedOrder, ToastItem, ToastOptions } from '../types';
 import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
@@ -178,6 +180,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
 
   // Manual platform override for single scan (or 'auto')
   const [selectedPlatform, setSelectedPlatform] = useState<'auto' | PlatformType>('auto');
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState<boolean>(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -1700,11 +1703,23 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                 )}
               </div>
 
+              {/* Camera Scanner Button (Mobile / Web) */}
+              <button
+                type="button"
+                id="btn-open-camera-scanner-nota"
+                onClick={() => setIsCameraScannerOpen(true)}
+                className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 text-sm shrink-0 cursor-pointer"
+                title="Buka Scanner Barcode Kamera (HP / Web)"
+              >
+                <Camera className="w-4 h-4" />
+                <span>Kamera HP</span>
+              </button>
+
               <button
                 type="button"
                 id="btn-submit-scan-nota"
                 onClick={() => handleProcessScan()}
-                className="px-6 py-3 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold rounded-xl shadow-xs hover:shadow-md transition-all flex items-center justify-center gap-2 text-sm shrink-0"
+                className="px-6 py-3 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold rounded-xl shadow-xs hover:shadow-md transition-all flex items-center justify-center gap-2 text-sm shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Catat Nota</span>
@@ -2234,6 +2249,23 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           </div>
         )}
       </AnimatePresence>
+      {/* Camera Barcode Scanner Modal for Mobile / Web */}
+      <CameraBarcodeScannerModal
+        isOpen={isCameraScannerOpen}
+        onClose={() => {
+          setIsCameraScannerOpen(false);
+          if (autoFocus && inputRef.current) {
+            inputRef.current.focus();
+          }
+        }}
+        onScanResult={(code) => {
+          handleProcessScan(code);
+        }}
+        showToast={showToast}
+        soundEnabled={soundEnabled}
+        onToggleSound={() => setSoundEnabled(!soundEnabled)}
+        totalScannedCount={totalNotas}
+      />
     </section>
   );
 };

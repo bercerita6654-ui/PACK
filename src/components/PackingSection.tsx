@@ -35,8 +35,11 @@ import {
   Info,
   ChevronDown,
   ExternalLink,
+  Camera,
+  Smartphone,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { CameraBarcodeScannerModal } from './CameraBarcodeScannerModal';
 import {
   PackedOrder,
   PlatformType,
@@ -145,6 +148,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
   const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<'Semua' | PlatformType>('Semua');
   const [duplicateWarning, setDuplicateWarning] = useState<PackedOrder | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState<boolean>(false);
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState<boolean>(false);
 
   // Autocomplete / Suggestions for Unpacked Orders
   const [isSuggestionOpen, setIsSuggestionOpen] = useState<boolean>(false);
@@ -1706,6 +1710,18 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
+                  id="btn-open-camera-scanner-top"
+                  onClick={() => setIsCameraScannerOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg font-bold border transition-all bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-xs cursor-pointer"
+                  title="Buka Scanner Barcode Kamera (Sangat praktis digunakan di HP / Mobile)"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>Scan Kamera</span>
+                  <span className="hidden sm:inline text-[10px] bg-indigo-500/80 px-1 py-0.2 rounded font-medium">HP</span>
+                </button>
+
+                <button
+                  type="button"
                   id="btn-toggle-continuous"
                   onClick={() => setContinuousBatchMode(!continuousBatchMode)}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-medium border transition-colors ${
@@ -1925,11 +1941,23 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                 </AnimatePresence>
               </div>
 
+              {/* Camera Scanner Button (Mobile / Web) */}
+              <button
+                type="button"
+                id="btn-open-camera-scanner-action"
+                onClick={() => setIsCameraScannerOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
+                title="Buka Kamera HP / Web untuk scan barcode resi langsung"
+              >
+                <Camera className="w-4 h-4" />
+                <span className="sm:inline">Kamera HP</span>
+              </button>
+
               <button
                 type="button"
                 id="btn-submit-scan"
                 onClick={() => handleProcessScan()}
-                className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition-colors shrink-0"
+                className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-5 sm:px-6 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-xs transition-colors shrink-0 cursor-pointer"
               >
                 <span>Scan</span>
                 <ArrowRight className="w-4 h-4" />
@@ -2487,6 +2515,24 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
           </div>
         )}
       </AnimatePresence>
+      {/* Camera Barcode Scanner Modal (Optimized for Mobile & Web) */}
+      <CameraBarcodeScannerModal
+        isOpen={isCameraScannerOpen}
+        onClose={() => {
+          setIsCameraScannerOpen(false);
+          if (autoFocus && inputRef.current) {
+            inputRef.current.focus();
+          }
+        }}
+        onScanResult={(code) => {
+          handleProcessScan(code);
+        }}
+        showToast={showToast}
+        soundEnabled={soundEnabled}
+        onToggleSound={() => setSoundEnabled(!soundEnabled)}
+        recentScans={recentScans}
+        totalScannedCount={orders.length}
+      />
     </div>
   );
 };
