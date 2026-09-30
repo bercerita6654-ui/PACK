@@ -651,6 +651,7 @@ export interface GeneratePackingReportParams {
   timeframe?: 'today' | 'yesterday' | 'week' | 'month' | 'all';
   lastPackedTimeStr?: string;
   customDate?: Date;
+  adminName?: string;
   breakdown?: {
     total?: PackingReportPlatformCounts;
     packed?: PackingReportPlatformCounts;
@@ -715,6 +716,7 @@ export function generatePackingReportText({
   timeframe = 'today',
   lastPackedTimeStr,
   customDate,
+  adminName,
   breakdown,
 }: GeneratePackingReportParams): string {
   const now = customDate || new Date();
@@ -792,7 +794,7 @@ export function generatePackingReportText({
     pendingLines += `\n- Lainnya : ${otherPending}`;
   }
 
-  return `*${titleText}*
+  let result = `*${titleText}*
 ${dayName}, ${dateFormatted} (${timeFormatted})
 
 *${totalLabel}  : ${totalCount} nota*
@@ -803,5 +805,22 @@ ${packedLines}
 
 *BELUM PACKING : ${pendingCount} nota*
 ${pendingLines}`;
+
+  // Resolve admin name (either passed explicitly or from localStorage)
+  const resolvedAdmin =
+    adminName !== undefined
+      ? adminName.trim()
+      : typeof window !== 'undefined'
+      ? (localStorage.getItem('packing_report_admin_name') || '').trim()
+      : '';
+
+  if (resolvedAdmin) {
+    const formattedAdmin = /^admin\s*[:-]?\s*/i.test(resolvedAdmin)
+      ? resolvedAdmin.replace(/^admin\s*[:-]?\s*/i, 'admin - ')
+      : `admin - ${resolvedAdmin}`;
+    result += `\n\n${formattedAdmin}`;
+  }
+
+  return result;
 }
 

@@ -17,6 +17,8 @@ import {
   Percent,
   Boxes,
   PackageCheck,
+  User,
+  X,
 } from 'lucide-react';
 import {
   PlatformType,
@@ -117,6 +119,19 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
   const [sheetTimeframe, setSheetTimeframe] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>('today');
   const [copiedReport, setCopiedReport] = useState<boolean>(false);
   const [activeModalType, setActiveModalType] = useState<'all' | 'pending' | 'overdue' | 'packed' | null>(null);
+  const [adminName, setAdminName] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('packing_report_admin_name') || '';
+    }
+    return '';
+  });
+
+  const handleAdminNameChange = (val: string) => {
+    setAdminName(val);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('packing_report_admin_name', val);
+    }
+  };
 
   // Cached raw sheet result and state refs to prevent redundant Google Sheets API calls
   const rawSheetResultRef = useRef<any | null>(null);
@@ -657,8 +672,13 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
       (r) => r.isPacked && r.packingTime && r.packingTime !== '-'
     );
     if (packedList.length > 0) {
-      const last = packedList[packedList.length - 1];
-      return `${last.packingTime} (${last.orderNumber})`;
+      let latest = packedList[packedList.length - 1];
+      for (const item of packedList) {
+        if (item.packingTime && (!latest.packingTime || item.packingTime > latest.packingTime)) {
+          latest = item;
+        }
+      }
+      return `${latest.packingTime} (${latest.orderNumber})`;
     }
     const now = new Date();
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -672,6 +692,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
       timeframe: sheetTimeframe,
       lastPackedTimeStr,
       customDate: new Date(),
+      adminName: adminName.trim(),
       breakdown: {
         total: { shopee: sheetShopeeCount, tokped: sheetTokpedCount },
         packed: { shopee: sheetShopeePackedCount, tokped: sheetTokpedPackedCount },
@@ -691,7 +712,10 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
         document.body.removeChild(textarea);
       }
       setCopiedReport(true);
-      showToast('Laporan status packing berhasil disalin ke clipboard!', 'success');
+      const toastMsg = adminName.trim()
+        ? `Laporan status packing (admin - ${adminName.trim()}) berhasil disalin!`
+        : 'Laporan status packing berhasil disalin ke clipboard!';
+      showToast(toastMsg, 'success');
       setTimeout(() => setCopiedReport(false), 2500);
     } catch {
       showToast('Gagal menyalin laporan packing.', 'error');
@@ -779,6 +803,38 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               )}
             </button>
 
+            {/* Opsi Nama Admin Pengelola Laporan */}
+            <div
+              className="flex items-center bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500/40 rounded-xl px-2.5 py-1.5 transition-all shadow-xs"
+              title="Isi nama admin yang handle laporan (akan tercantum di bawah teks Salin Report, misal: admin - Mishel)"
+            >
+              <User className="w-3.5 h-3.5 text-emerald-400 shrink-0 mr-1.5" />
+              <label
+                htmlFor="input-report-admin-name"
+                className="text-[11px] font-bold text-slate-300 mr-1 whitespace-nowrap cursor-pointer select-none"
+              >
+                Admin:
+              </label>
+              <input
+                id="input-report-admin-name"
+                type="text"
+                value={adminName}
+                onChange={(e) => handleAdminNameChange(e.target.value)}
+                placeholder="Misal: Mishel"
+                className="bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none w-24 sm:w-28 font-medium"
+              />
+              {adminName && (
+                <button
+                  type="button"
+                  onClick={() => handleAdminNameChange('')}
+                  className="text-slate-400 hover:text-rose-400 p-0.5 rounded cursor-pointer transition-colors"
+                  title="Hapus nama admin"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
             {/* Tombol Salin Report Tunggal */}
             <button
               type="button"
@@ -789,7 +845,11 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                   ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-300'
                   : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white'
               }`}
-              title="Salin ringkasan laporan status packing ke clipboard"
+              title={
+                adminName.trim()
+                  ? `Salin ringkasan laporan packing ke clipboard (Admin: ${adminName.trim()})`
+                  : 'Salin ringkasan laporan status packing ke clipboard (Bisa isi nama admin di sebelah)'
+              }
             >
               {copiedReport ? (
                 <Check className="w-3.5 h-3.5 text-slate-950 stroke-[3]" />
