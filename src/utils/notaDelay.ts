@@ -652,6 +652,7 @@ export interface GeneratePackingReportParams {
   lastPackedTimeStr?: string;
   customDate?: Date;
   adminName?: string;
+  notes?: string;
   breakdown?: {
     total?: PackingReportPlatformCounts;
     packed?: PackingReportPlatformCounts;
@@ -717,6 +718,7 @@ export function generatePackingReportText({
   lastPackedTimeStr,
   customDate,
   adminName,
+  notes,
   breakdown,
 }: GeneratePackingReportParams): string {
   const now = customDate || new Date();
@@ -805,6 +807,15 @@ ${packedLines}
 
 *BELUM PACKING : ${pendingCount} nota*
 ${pendingLines}`;
+
+  // Optional additional notes
+  if (notes && notes.trim()) {
+    const cleanNotes = notes.trim();
+    const formattedNotes = /^(catatan|note)\s*[:-]?/i.test(cleanNotes)
+      ? cleanNotes
+      : `*Catatan:*\n${cleanNotes}`;
+    result += `\n\n${formattedNotes}`;
+  }
 
   // Resolve admin name (either passed explicitly or from localStorage)
   const resolvedAdmin =

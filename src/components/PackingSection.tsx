@@ -51,6 +51,7 @@ import {
 import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
 import { PackingSheetHistory } from './PackingSheetHistory';
+import { AdminReportModal } from './AdminReportModal';
 import { fetchCrossReferencedNotasAndPacking } from '../services/googleWorkspace';
 import {
   isNotaDelayed,
@@ -492,66 +493,11 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
   };
 
   const [copiedReport, setCopiedReport] = useState<boolean>(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
 
-  // Copy Formatted Packing Status Report (e.g. Update Harian Pesanan REG)
-  const handleCopyPackingReport = async () => {
-    const totalNotas =
-      processedNotas && processedNotas.length > 0 ? processedNotas.length : orders.length;
-    const packedNotas =
-      processedNotas && processedNotas.length > 0
-        ? processedNotas.filter((n) => n.isPacked).length
-        : orders.length;
-    const pendingNotas = Math.max(0, totalNotas - packedNotas);
-
-    // Extract last update time
-    const lastPackedTimeStr =
-      orders.length > 0 ? orders[orders.length - 1].timestamp : undefined;
-
-    const sourceRows = processedNotas && processedNotas.length > 0 ? processedNotas : orders;
-    const shopeeTotal = sourceRows.filter((n) => n.platform === 'Shopee').length;
-    const tokpedTotal = sourceRows.filter((n) => n.platform === 'Tokopedia/TikTok').length;
-    const shopeePacked =
-      processedNotas && processedNotas.length > 0
-        ? processedNotas.filter((n) => n.isPacked && n.platform === 'Shopee').length
-        : orders.filter((o) => o.platform === 'Shopee').length;
-    const tokpedPacked =
-      processedNotas && processedNotas.length > 0
-        ? processedNotas.filter((n) => n.isPacked && n.platform === 'Tokopedia/TikTok').length
-        : orders.filter((o) => o.platform === 'Tokopedia/TikTok').length;
-    const shopeePending = Math.max(0, shopeeTotal - shopeePacked);
-    const tokpedPending = Math.max(0, tokpedTotal - tokpedPacked);
-
-    const reportText = generatePackingReportText({
-      totalCount: totalNotas,
-      packedCount: packedNotas,
-      pendingCount: pendingNotas,
-      timeframe: 'today',
-      lastPackedTimeStr,
-      customDate: new Date(),
-      breakdown: {
-        total: { shopee: shopeeTotal, tokped: tokpedTotal },
-        packed: { shopee: shopeePacked, tokped: tokpedPacked },
-        pending: { shopee: shopeePending, tokped: tokpedPending },
-      },
-    });
-
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(reportText);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = reportText;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-      }
-      setCopiedReport(true);
-      setTimeout(() => setCopiedReport(false), 2500);
-      showToast('Report status packing berhasil disalin ke clipboard!', 'success');
-    } catch {
-      showToast('Gagal menyalin report ke clipboard.', 'error');
-    }
+  // Copy Formatted Packing Status Report (e.g. Update Harian Pesanan REG) - Opens Admin selection modal
+  const handleCopyPackingReport = () => {
+    setIsReportModalOpen(true);
   };
 
   // Export Packing CSV
@@ -2532,6 +2478,76 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
         onToggleSound={() => setSoundEnabled(!soundEnabled)}
         recentScans={recentScans}
         totalScannedCount={orders.length}
+      />
+
+      {/* Admin Selection & Report Copy Modal */}
+      <AdminReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        reportParams={{
+          totalCount: processedNotas && processedNotas.length > 0 ? processedNotas.length : orders.length,
+          packedCount:
+            processedNotas && processedNotas.length > 0
+              ? processedNotas.filter((n) => n.isPacked).length
+              : orders.length,
+          pendingCount: Math.max(
+            0,
+            (processedNotas && processedNotas.length > 0 ? processedNotas.length : orders.length) -
+              (processedNotas && processedNotas.length > 0
+                ? processedNotas.filter((n) => n.isPacked).length
+                : orders.length)
+          ),
+          timeframe: 'today',
+          lastPackedTimeStr: orders.length > 0 ? orders[orders.length - 1].timestamp : undefined,
+          customDate: new Date(),
+          breakdown: {
+            total: {
+              shopee: (processedNotas && processedNotas.length > 0 ? processedNotas : orders).filter(
+                (n) => n.platform === 'Shopee'
+              ).length,
+              tokped: (processedNotas && processedNotas.length > 0 ? processedNotas : orders).filter(
+                (n) => n.platform === 'Tokopedia/TikTok'
+              ).length,
+            },
+            packed: {
+              shopee: (processedNotas && processedNotas.length > 0
+                ? processedNotas.filter((n) => n.isPacked && n.platform === 'Shopee')
+                : orders.filter((o) => o.platform === 'Shopee')
+              ).length,
+              tokped: (processedNotas && processedNotas.length > 0
+                ? processedNotas.filter((n) => n.isPacked && n.platform === 'Tokopedia/TikTok')
+                : orders.filter((o) => o.platform === 'Tokopedia/TikTok')
+              ).length,
+            },
+            pending: {
+              shopee: Math.max(
+                0,
+                (processedNotas && processedNotas.length > 0 ? processedNotas : orders).filter(
+                  (n) => n.platform === 'Shopee'
+                ).length -
+                  (processedNotas && processedNotas.length > 0
+                    ? processedNotas.filter((n) => n.isPacked && n.platform === 'Shopee')
+                    : orders.filter((o) => o.platform === 'Shopee')
+                  ).length
+              ),
+              tokped: Math.max(
+                0,
+                (processedNotas && processedNotas.length > 0 ? processedNotas : orders).filter(
+                  (n) => n.platform === 'Tokopedia/TikTok'
+                ).length -
+                  (processedNotas && processedNotas.length > 0
+                    ? processedNotas.filter((n) => n.isPacked && n.platform === 'Tokopedia/TikTok')
+                    : orders.filter((o) => o.platform === 'Tokopedia/TikTok')
+                  ).length
+              ),
+            },
+          },
+        }}
+        onSuccessCopy={(admin) => {
+          setCopiedReport(true);
+          showToast(`Report status packing (admin - ${admin}) berhasil disalin!`, 'success');
+          setTimeout(() => setCopiedReport(false), 2500);
+        }}
       />
     </div>
   );
