@@ -18,6 +18,7 @@ import { BerandaSection } from './components/BerandaSection';
 import { ConfirmWorkspaceActionModal } from './components/ConfirmWorkspaceActionModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
 import { ToastContainer } from './components/Toast';
+import { soundFX } from './utils/audio';
 import { User } from 'firebase/auth';
 import {
   initAuth,
@@ -567,6 +568,12 @@ export default function App() {
         );
         setLastPackingSyncTime(Date.now());
         setLastNotaSyncTime(Date.now());
+
+        // Suara jumlah nota otomatis saat berhasil ditandai dan disimpan ke sheet
+        if (items.length > 0) {
+          soundFX.speakNotaCount(items.length, 'sudah_packing');
+        }
+
         return res;
       } catch (err: any) {
         console.error('Error updating packing status in spreadsheet:', err);
@@ -1412,8 +1419,15 @@ export default function App() {
             }
           }
 
+          const countToAnnounce = saveResult.added > 0 ? saveResult.added : packedOrders.length;
+
           // Otomatis reset data packing paket setelah klik simpan ke Google Sheet
           handleClearPackedOrders();
+
+          // Suara jumlah nota otomatis saat berhasil klik simpan Scan Nota (Sudah Packing)
+          if (countToAnnounce > 0) {
+            soundFX.speakNotaCount(countToAnnounce, 'sudah_packing');
+          }
 
           // Berikan notifikasi akurat mengenai hasil simpan & duplikasi
           if (saveResult.added > 0 && saveResult.skippedDuplicates === 0) {
@@ -1562,8 +1576,15 @@ export default function App() {
             }
           }
 
+          const countToAnnounce = saveResult.added > 0 ? saveResult.added : processedNotas.length;
+
           // Otomatis hapus / kosongkan daftar nota dari sesi scan lokal setelah tersimpan ke Google Sheet
           setProcessedNotas([]);
+
+          // Suara jumlah nota otomatis saat berhasil klik simpan Data Scan Nota (Belum Packing)
+          if (countToAnnounce > 0) {
+            soundFX.speakNotaCount(countToAnnounce, 'belum_packing');
+          }
 
           if (saveResult.added > 0 && saveResult.skippedDuplicates === 0) {
             showToast(
