@@ -74,13 +74,24 @@ export default function App() {
   const [showRekapTab, setShowRekapTab] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('app_show_rekap_tab');
-      return saved !== null ? JSON.parse(saved) : true; // Default: true agar tab Rekap dapat langsung diakses
+      // Sembunyikan menu tab Rekap sesuai permintaan pengguna
+      if (saved === 'true') {
+        localStorage.setItem('app_show_rekap_tab', JSON.stringify(false));
+        return false;
+      }
+      return saved !== null ? JSON.parse(saved) : false;
     } catch {
-      return true;
+      return false;
     }
   });
   const [activeTab, setActiveTab] = useState<ActiveTab>('beranda');
   const [sheetHistoryFilter, setSheetHistoryFilter] = useState<'all' | 'pending' | 'overdue' | 'packed'>('all');
+
+  useEffect(() => {
+    if (!showRekapTab && activeTab === 'rekap') {
+      setActiveTab('beranda');
+    }
+  }, [showRekapTab, activeTab]);
 
   const handleNavigateFromBeranda = (tab: ActiveTab, filter?: 'all' | 'pending' | 'overdue' | 'packed') => {
     if (filter) {
@@ -205,7 +216,7 @@ export default function App() {
       // ignore
     }
 
-    // Seed realistic sample logs for previous dates across the 7 days week window
+    // Seed realistic sample logs for previous dates across the comparison timeframe window (up to 14 days)
     const getPastDate = (daysAgo: number) => {
       const d = new Date();
       d.setDate(d.getDate() - daysAgo);
@@ -215,45 +226,35 @@ export default function App() {
       };
     };
 
-    const d1 = getPastDate(1);
-    const d2 = getPastDate(2);
-    const d3 = getPastDate(3);
-    const d4 = getPastDate(4);
-    const d5 = getPastDate(5);
-    const d6 = getPastDate(6);
-
-    return [
-      // 1 day ago (yesterday)
-      { id: 'hist-1-1', timestamp: '16:45:10', date: d1.iso, dateFormatted: d1.formatted, expedition: 'JNT', amount: 25, method: 'pickup' },
-      { id: 'hist-1-2', timestamp: '15:20:00', date: d1.iso, dateFormatted: d1.formatted, expedition: 'SPX', amount: 35, method: 'pickup' },
-      { id: 'hist-1-3', timestamp: '14:10:25', date: d1.iso, dateFormatted: d1.formatted, expedition: 'JNE', amount: 18, method: 'drop off' },
-      { id: 'hist-1-4', timestamp: '11:05:40', date: d1.iso, dateFormatted: d1.formatted, expedition: 'IDX', amount: 12, method: 'pickup' },
-      // 2 days ago
-      { id: 'hist-2-1', timestamp: '17:30:15', date: d2.iso, dateFormatted: d2.formatted, expedition: 'SPX', amount: 42, method: 'pickup' },
-      { id: 'hist-2-2', timestamp: '15:15:00', date: d2.iso, dateFormatted: d2.formatted, expedition: 'JNT', amount: 30, method: 'drop off' },
-      { id: 'hist-2-3', timestamp: '13:40:22', date: d2.iso, dateFormatted: d2.formatted, expedition: 'JNE', amount: 20, method: 'pickup' },
-      { id: 'hist-2-4', timestamp: '10:30:00', date: d2.iso, dateFormatted: d2.formatted, expedition: 'IDX', amount: 15, method: 'pickup' },
-      // 3 days ago
-      { id: 'hist-3-1', timestamp: '16:20:00', date: d3.iso, dateFormatted: d3.formatted, expedition: 'JNT', amount: 38, method: 'pickup' },
-      { id: 'hist-3-2', timestamp: '14:50:00', date: d3.iso, dateFormatted: d3.formatted, expedition: 'SPX', amount: 28, method: 'pickup' },
-      { id: 'hist-3-3', timestamp: '13:10:00', date: d3.iso, dateFormatted: d3.formatted, expedition: 'JNE', amount: 16, method: 'drop off' },
-      { id: 'hist-3-4', timestamp: '11:15:00', date: d3.iso, dateFormatted: d3.formatted, expedition: 'IDX', amount: 10, method: 'pickup' },
-      // 4 days ago
-      { id: 'hist-4-1', timestamp: '16:40:00', date: d4.iso, dateFormatted: d4.formatted, expedition: 'SPX', amount: 34, method: 'pickup' },
-      { id: 'hist-4-2', timestamp: '15:10:00', date: d4.iso, dateFormatted: d4.formatted, expedition: 'JNT', amount: 22, method: 'pickup' },
-      { id: 'hist-4-3', timestamp: '13:30:00', date: d4.iso, dateFormatted: d4.formatted, expedition: 'JNE', amount: 14, method: 'drop off' },
-      { id: 'hist-4-4', timestamp: '10:20:00', date: d4.iso, dateFormatted: d4.formatted, expedition: 'IDX', amount: 8, method: 'pickup' },
-      // 5 days ago
-      { id: 'hist-5-1', timestamp: '17:00:00', date: d5.iso, dateFormatted: d5.formatted, expedition: 'JNT', amount: 30, method: 'pickup' },
-      { id: 'hist-5-2', timestamp: '15:25:00', date: d5.iso, dateFormatted: d5.formatted, expedition: 'SPX', amount: 26, method: 'pickup' },
-      { id: 'hist-5-3', timestamp: '14:00:00', date: d5.iso, dateFormatted: d5.formatted, expedition: 'JNE', amount: 18, method: 'drop off' },
-      { id: 'hist-5-4', timestamp: '11:00:00', date: d5.iso, dateFormatted: d5.formatted, expedition: 'IDX', amount: 12, method: 'pickup' },
-      // 6 days ago
-      { id: 'hist-6-1', timestamp: '16:30:00', date: d6.iso, dateFormatted: d6.formatted, expedition: 'SPX', amount: 25, method: 'pickup' },
-      { id: 'hist-6-2', timestamp: '15:00:00', date: d6.iso, dateFormatted: d6.formatted, expedition: 'JNT', amount: 20, method: 'drop off' },
-      { id: 'hist-6-3', timestamp: '13:15:00', date: d6.iso, dateFormatted: d6.formatted, expedition: 'JNE', amount: 15, method: 'pickup' },
-      { id: 'hist-6-4', timestamp: '10:45:00', date: d6.iso, dateFormatted: d6.formatted, expedition: 'IDX', amount: 10, method: 'pickup' },
+    const pastLogs: PackageLog[] = [];
+    const sampleProfiles = [
+      { jnt: 25, spx: 35, jne: 18, idx: 12 },
+      { jnt: 30, spx: 42, jne: 20, idx: 15 },
+      { jnt: 38, spx: 28, jne: 16, idx: 10 },
+      { jnt: 22, spx: 34, jne: 14, idx: 8 },
+      { jnt: 30, spx: 26, jne: 18, idx: 12 },
+      { jnt: 20, spx: 25, jne: 15, idx: 10 },
+      { jnt: 32, spx: 40, jne: 22, idx: 14 },
+      { jnt: 28, spx: 36, jne: 17, idx: 11 },
+      { jnt: 35, spx: 44, jne: 21, idx: 16 },
+      { jnt: 24, spx: 30, jne: 15, idx: 9 },
+      { jnt: 31, spx: 38, jne: 19, idx: 13 },
+      { jnt: 27, spx: 33, jne: 16, idx: 10 },
+      { jnt: 36, spx: 45, jne: 23, idx: 15 },
     ];
+
+    for (let dayAgo = 1; dayAgo <= 13; dayAgo++) {
+      const p = sampleProfiles[(dayAgo - 1) % sampleProfiles.length];
+      const dt = getPastDate(dayAgo);
+      pastLogs.push(
+        { id: `hist-${dayAgo}-1`, timestamp: '16:45:10', date: dt.iso, dateFormatted: dt.formatted, expedition: 'JNT', amount: p.jnt, method: 'pickup' },
+        { id: `hist-${dayAgo}-2`, timestamp: '15:20:00', date: dt.iso, dateFormatted: dt.formatted, expedition: 'SPX', amount: p.spx, method: 'pickup' },
+        { id: `hist-${dayAgo}-3`, timestamp: '14:10:25', date: dt.iso, dateFormatted: dt.formatted, expedition: 'JNE', amount: p.jne, method: 'drop off' },
+        { id: `hist-${dayAgo}-4`, timestamp: '11:05:40', date: dt.iso, dateFormatted: dt.formatted, expedition: 'IDX', amount: p.idx, method: 'pickup' }
+      );
+    }
+
+    return pastLogs;
   });
 
   // State for Paket Packing scanned orders

@@ -7,10 +7,7 @@ import {
   CalendarDays,
   Award,
   Zap,
-  CheckCircle2,
   Layers,
-  ArrowUpRight,
-  ArrowDownRight,
   Minus,
   Sparkles,
   Info,
@@ -19,6 +16,8 @@ import {
 } from 'lucide-react';
 import { EXPEDITION_KEYS, EXPEDITIONS } from '../data/constants';
 import { ExpeditionCode, PackageLog, PackedOrder } from '../types';
+
+export type TimeRangeFilter = '7d' | '14d' | 'month';
 
 interface WeeklyComparisonChartProps {
   logs: PackageLog[];
@@ -38,6 +37,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
   packedOrders = [],
   showToast,
 }) => {
+  const [timeRange, setTimeRange] = useState<TimeRangeFilter>('7d');
   const [chartMode, setChartMode] = useState<ChartMode>('stacked');
   const [activeExpFilter, setActiveExpFilter] = useState<FilterExpedition>('ALL');
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
@@ -45,7 +45,14 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
   const [copiedSummary, setCopiedSummary] = useState<boolean>(false);
   const [viewStyle, setViewStyle] = useState<'chart' | 'table'>('chart');
 
-  // Compute 7 days from (today - 6 days) up to today
+  // Handle timeframe change and reset selection
+  const handleTimeRangeChange = (newRange: TimeRangeFilter) => {
+    setTimeRange(newRange);
+    setSelectedDayIndex(null);
+    setHoveredDayIndex(null);
+  };
+
+  // Compute days according to chosen timeframe (7d, 14d, or month)
   const daysData = useMemo(() => {
     const result = [];
     const now = new Date();
@@ -58,8 +65,37 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
     ];
 
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yyyyToday = todayDate.getFullYear();
+    const mmToday = String(todayDate.getMonth() + 1).padStart(2, '0');
+    const ddToday = String(todayDate.getDate()).padStart(2, '0');
+    const todayIso = `${yyyyToday}-${mmToday}-${ddToday}`;
+
+    const yesterdayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const yyyyYest = yesterdayDate.getFullYear();
+    const mmYest = String(yesterdayDate.getMonth() + 1).padStart(2, '0');
+    const ddYest = String(yesterdayDate.getDate()).padStart(2, '0');
+    const yesterdayIso = `${yyyyYest}-${mmYest}-${ddYest}`;
+
+    const targetDates: Date[] = [];
+
+    if (timeRange === '7d') {
+      for (let i = 6; i >= 0; i--) {
+        targetDates.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i));
+      }
+    } else if (timeRange === '14d') {
+      for (let i = 13; i >= 0; i--) {
+        targetDates.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i));
+      }
+    } else if (timeRange === 'month') {
+      // Dari tanggal 1 bulan berjalan sampai hari ini
+      const currentDay = now.getDate();
+      for (let d = 1; d <= currentDay; d++) {
+        targetDates.push(new Date(now.getFullYear(), now.getMonth(), d));
+      }
+    }
+
+    targetDates.forEach((d, idx) => {
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
@@ -69,14 +105,18 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
       const dayNameFull = dayNamesFull[d.getDay()];
       const dateFormattedShort = `${d.getDate()} ${monthNamesShort[d.getMonth()]}`;
       const dateFormattedFull = `${dayNameFull}, ${d.getDate()} ${monthNamesFull[d.getMonth()]} ${d.getFullYear()}`;
-      const isToday = i === 0;
-      const isYesterday = i === 1;
+      const isToday = isoDate === todayIso;
+      const isYesterday = isoDate === yesterdayIso;
 
       // Filter logs matching this day
       const dayLogs = logs.filter((log) => {
         if (!log.date) return false;
         if (log.date === isoDate || log.date.startsWith(isoDate)) return true;
-        if (log.dateFormatted && (log.dateFormatted.includes(`${d.getDate()} ${monthNamesShort[d.getMonth()]}`) || log.dateFormatted.includes(`${d.getDate()} ${monthNamesFull[d.getMonth()]}`))) {
+        if (
+          log.dateFormatted &&
+          (log.dateFormatted.includes(`${d.getDate()} ${monthNamesShort[d.getMonth()]}`) ||
+            log.dateFormatted.includes(`${d.getDate()} ${monthNamesFull[d.getMonth()]}`))
+        ) {
           return true;
         }
         return false;
@@ -108,7 +148,11 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
 
       // Synchronize today's count with todayCounts if today's logs are empty or less
       if (isToday) {
-        const todaySum = (todayCounts.JNE || 0) + (todayCounts.JNT || 0) + (todayCounts.SPX || 0) + (todayCounts.IDX || 0);
+        const todaySum =
+          (todayCounts.JNE || 0) +
+          (todayCounts.JNT || 0) +
+          (todayCounts.SPX || 0) +
+          (todayCounts.IDX || 0);
         if (todaySum > totalAmount) {
           totalAmount = todaySum;
           expCounts.JNE = todayCounts.JNE || 0;
@@ -119,7 +163,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
       }
 
       result.push({
-        index: 6 - i,
+        index: idx,
         dateObj: d,
         isoDate,
         dayNameShort,
@@ -134,10 +178,10 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
         dropoff: dropoffAmount,
         logCount: dayLogs.length,
       });
-    }
+    });
 
     return result;
-  }, [logs, todayCounts]);
+  }, [logs, todayCounts, timeRange]);
 
   // Filtered values depending on selected expedition
   const displayDays = useMemo(() => {
@@ -153,16 +197,56 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
     });
   }, [daysData, activeExpFilter]);
 
-  // Overall Weekly Metrics
-  const weeklyTotal = useMemo(() => {
+  // Dynamic range labels
+  const rangeMeta = useMemo(() => {
+    const monthNamesFull = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    const now = new Date();
+    const currentMonthName = monthNamesFull[now.getMonth()];
+
+    if (timeRange === '7d') {
+      return {
+        badgeText: '7 Hari Terakhir',
+        cardTitle: 'Total 7 Hari',
+        cardSubtitle: 'Akumulasi 1 minggu terakhir',
+        trendSubtitle: 'Tren 7 hari terakhir',
+        copyTitle: 'Grafik & Rekap 7 Hari Terakhir',
+      };
+    }
+    if (timeRange === '14d') {
+      return {
+        badgeText: '14 Hari Terakhir',
+        cardTitle: 'Total 14 Hari',
+        cardSubtitle: 'Akumulasi 2 minggu terakhir',
+        trendSubtitle: 'Tren 14 hari terakhir',
+        copyTitle: 'Grafik & Rekap 14 Hari Terakhir',
+      };
+    }
+    return {
+      badgeText: `Bulan Ini (${currentMonthName})`,
+      cardTitle: 'Total Bulan Ini',
+      cardSubtitle: `Akumulasi bulan ${currentMonthName} berjalan`,
+      trendSubtitle: `Tren bulan ${currentMonthName}`,
+      copyTitle: `Grafik & Rekap Bulan Ini (${currentMonthName})`,
+    };
+  }, [timeRange]);
+
+  // Overall Period Metrics
+  const periodTotal = useMemo(() => {
     return displayDays.reduce((sum, d) => sum + d.displayValue, 0);
   }, [displayDays]);
 
   const dailyAverage = useMemo(() => {
-    return Math.round((weeklyTotal / 7) * 10) / 10;
-  }, [weeklyTotal]);
+    const count = displayDays.length || 1;
+    return Math.round((periodTotal / count) * 10) / 10;
+  }, [periodTotal, displayDays.length]);
 
   const peakDay = useMemo(() => {
+    if (displayDays.length === 0) {
+      return { dayNameShort: '-', dayNameFull: '-', displayValue: 0, dateFormattedShort: '-' };
+    }
     let peak = displayDays[0];
     for (const d of displayDays) {
       if (d.displayValue > peak.displayValue) peak = d;
@@ -170,8 +254,26 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
     return peak;
   }, [displayDays]);
 
-  const todayData = displayDays[6];
-  const yesterdayData = displayDays[5];
+  const todayData = useMemo(() => {
+    return (
+      displayDays.find((d) => d.isToday) ||
+      displayDays[displayDays.length - 1] || {
+        displayValue: 0,
+        dayNameShort: '',
+        dateFormattedShort: '',
+      }
+    );
+  }, [displayDays]);
+
+  const yesterdayData = useMemo(() => {
+    const found = displayDays.find((d) => d.isYesterday);
+    if (found) return found;
+    if (displayDays.length > 1) {
+      return displayDays[displayDays.length - 2];
+    }
+    return { displayValue: 0, dayNameShort: '', dateFormattedShort: '' };
+  }, [displayDays]);
+
   const diffVsYesterday = todayData.displayValue - yesterdayData.displayValue;
   const percentVsYesterday =
     yesterdayData.displayValue > 0
@@ -180,8 +282,8 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
       ? 100
       : 0;
 
-  // 7-day totals per expedition for legend
-  const exp7DayTotals = useMemo(() => {
+  // Period totals per expedition for legend and table
+  const expPeriodTotals = useMemo(() => {
     const res: Record<ExpeditionCode, number> = {
       JNE: 0,
       JNT: 0,
@@ -196,34 +298,49 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
     return res;
   }, [daysData]);
 
-  const allExp7DaySum = useMemo(() => {
-    return Object.values(exp7DayTotals).reduce((a: number, b: number) => a + b, 0);
-  }, [exp7DayTotals]);
+  const allExpPeriodSum = useMemo(() => {
+    return Object.values(expPeriodTotals).reduce((a: number, b: number) => a + b, 0);
+  }, [expPeriodTotals]);
 
   // Active highlighted day
-  const activeFocusIndex =
-    selectedDayIndex !== null
-      ? selectedDayIndex
-      : hoveredDayIndex !== null
-      ? hoveredDayIndex
-      : 6; // default focus on today
-  const activeFocusDay = displayDays[activeFocusIndex] || displayDays[6];
+  const activeFocusIndex = useMemo(() => {
+    if (selectedDayIndex !== null && selectedDayIndex >= 0 && selectedDayIndex < displayDays.length) {
+      return selectedDayIndex;
+    }
+    if (hoveredDayIndex !== null && hoveredDayIndex >= 0 && hoveredDayIndex < displayDays.length) {
+      return hoveredDayIndex;
+    }
+    const todayIdx = displayDays.findIndex((d) => d.isToday);
+    if (todayIdx !== -1) return todayIdx;
+    return Math.max(0, displayDays.length - 1);
+  }, [selectedDayIndex, hoveredDayIndex, displayDays]);
 
-  // SVG Chart Geometry
+  const activeFocusDay = displayDays[activeFocusIndex] || displayDays[displayDays.length - 1];
+
+  // Dynamic SVG Chart Geometry based on day count
+  const numDays = displayDays.length || 1;
+  const isDense = numDays > 14;
+  const isMedium = numDays > 7 && numDays <= 14;
+
   const chartHeight = 160;
-  const svgWidth = 680;
-  const svgHeight = 225;
   const paddingLeft = 45;
   const paddingRight = 20;
+
+  // Slot width calculation: ensure bars are comfortable to read
+  const minSlotWidth = numDays <= 7 ? 88 : numDays <= 14 ? 54 : 40;
+  const svgWidth = Math.max(680, paddingLeft + paddingRight + numDays * minSlotWidth);
+  const svgHeight = 225;
   const plotWidth = svgWidth - paddingLeft - paddingRight;
 
   const rawMax = Math.max(10, ...displayDays.map((d) => d.displayValue));
   // Round up to nice number for Y grid
   const maxScale = Math.ceil(rawMax / 10) * 10 + 5;
 
+  const slotWidth = plotWidth / numDays;
+  const barWidth = Math.max(15, Math.min(44, Math.floor(slotWidth * (numDays <= 7 ? 0.55 : 0.65))));
+
   const getBarX = (index: number) => {
-    const slotWidth = plotWidth / 7;
-    return paddingLeft + index * slotWidth + (slotWidth - 44) / 2;
+    return paddingLeft + index * slotWidth + (slotWidth - barWidth) / 2;
   };
 
   const getBarHeight = (value: number) => {
@@ -233,20 +350,22 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
 
   const avgY = 170 - (dailyAverage / maxScale) * chartHeight;
 
-  // Copy weekly summary to clipboard
-  const handleCopyWeeklySummary = async () => {
+  // Copy summary report to clipboard
+  const handleCopyComparisonSummary = async () => {
+    if (daysData.length === 0) return;
     const firstDay = daysData[0];
-    const lastDay = daysData[6];
+    const lastDay = daysData[daysData.length - 1];
     const expLabel =
       activeExpFilter === 'ALL'
         ? 'Semua Ekspedisi'
         : EXPEDITIONS[activeExpFilter]?.name || activeExpFilter;
 
-    let text = `*Grafik & Rekap Mingguan Paket (${expLabel})*\n`;
+    let text = `*${rangeMeta.copyTitle} (${expLabel})*\n`;
     text += `Periode: ${firstDay.dateFormattedShort} - ${lastDay.dateFormattedShort} (${firstDay.dateObj.getFullYear()})\n`;
-    text += `Total 7 Hari : ${weeklyTotal} paket (Rata-rata: ${dailyAverage}/hari)\n`;
+    text += `Rentang: ${rangeMeta.badgeText}\n`;
+    text += `${rangeMeta.cardTitle} : ${periodTotal} paket (Rata-rata: ${dailyAverage}/hari)\n`;
     text += `Hari Puncak  : ${peakDay.dayNameFull} (${peakDay.displayValue} paket)\n\n`;
-    text += `*Rincian Per Hari (Tren 7 Hari):*\n`;
+    text += `*Rincian Per Hari (${rangeMeta.trendSubtitle}):*\n`;
 
     daysData.forEach((d) => {
       const tag = d.isToday ? ' (Hari Ini)' : d.isYesterday ? ' (Kemarin)' : '';
@@ -255,10 +374,10 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
     });
 
     if (activeExpFilter === 'ALL') {
-      text += `\n*Total Per Ekspedisi (7 Hari):*\n`;
+      text += `\n*Total Per Ekspedisi (${rangeMeta.badgeText}):*\n`;
       EXPEDITION_KEYS.forEach((k) => {
-        const amt = exp7DayTotals[k];
-        const pct = allExp7DaySum > 0 ? Math.round((amt / allExp7DaySum) * 100) : 0;
+        const amt = expPeriodTotals[k];
+        const pct = allExpPeriodSum > 0 ? Math.round((amt / allExpPeriodSum) * 100) : 0;
         text += `- ${EXPEDITIONS[k].name}: ${amt} paket (${pct}%)\n`;
       });
     }
@@ -276,15 +395,18 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
       }
       setCopiedSummary(true);
       if (showToast) {
-        showToast('Ringkasan tren mingguan berhasil disalin ke clipboard!', 'success');
+        showToast(`Ringkasan tren (${rangeMeta.badgeText}) berhasil disalin!`, 'success');
       }
       setTimeout(() => setCopiedSummary(false), 2500);
     } catch {
       if (showToast) {
-        showToast('Gagal menyalin ringkasan mingguan.', 'error');
+        showToast('Gagal menyalin ringkasan.', 'error');
       }
     }
   };
+
+  const firstDayFormatted = daysData[0]?.dateFormattedShort || '';
+  const lastDayFormatted = daysData[daysData.length - 1]?.dateFormattedShort || '';
 
   return (
     <div
@@ -304,20 +426,70 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
-                Tren & Perbandingan Paket Mingguan
+                Tren & Perbandingan Paket
               </h3>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-50 text-blue-700 border border-blue-200/70">
-                1 Minggu Terakhir
+              <span
+                id="badge-active-timeframe"
+                className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-50 text-blue-700 border border-blue-200/70"
+              >
+                {rangeMeta.badgeText}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Pantau pergerakan jumlah paket dari hari ke hari dalam 7 hari terakhir ({daysData[0].dateFormattedShort} – {daysData[6].dateFormattedShort})
+              Pantau pergerakan jumlah paket dari hari ke hari ({firstDayFormatted} – {lastDayFormatted})
             </p>
           </div>
         </div>
 
         {/* Action Controls & Filter Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Rentang Waktu Filter Control (7 Hari, 14 Hari, Bulan Ini) */}
+          <div
+            id="timeframe-filter-group"
+            className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 text-xs font-bold"
+            title="Pilih rentang waktu perbandingan paket"
+          >
+            <button
+              type="button"
+              id="filter-range-7d"
+              onClick={() => handleTimeRangeChange('7d')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                timeRange === '7d'
+                  ? 'bg-blue-600 text-white shadow-xs font-black'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>7 Hari</span>
+            </button>
+            <button
+              type="button"
+              id="filter-range-14d"
+              onClick={() => handleTimeRangeChange('14d')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                timeRange === '14d'
+                  ? 'bg-blue-600 text-white shadow-xs font-black'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              <span>14 Hari</span>
+            </button>
+            <button
+              type="button"
+              id="filter-range-month"
+              onClick={() => handleTimeRangeChange('month')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                timeRange === 'month'
+                  ? 'bg-blue-600 text-white shadow-xs font-black'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Bulan Ini</span>
+            </button>
+          </div>
+
           {/* View toggle: Chart vs Table */}
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 text-xs font-bold">
             <button
@@ -377,16 +549,17 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
             </div>
           )}
 
-          {/* Copy weekly report summary */}
+          {/* Copy report summary */}
           <button
             type="button"
-            onClick={handleCopyWeeklySummary}
+            id="btn-copy-chart-summary"
+            onClick={handleCopyComparisonSummary}
             className={`px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
               copiedSummary
                 ? 'bg-emerald-600 text-white'
                 : 'bg-slate-800 hover:bg-slate-700 text-white active:bg-slate-900'
             }`}
-            title="Salin ringkasan tren mingguan ke clipboard"
+            title="Salin ringkasan tren perbandingan ke clipboard"
           >
             {copiedSummary ? (
               <>
@@ -403,22 +576,22 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
         </div>
       </div>
 
-      {/* 4 Summary Stat Cards for the 7 Days */}
+      {/* 4 Summary Stat Cards for the Period */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 my-5 relative z-10">
-        {/* Total 7 Hari */}
+        {/* Total Rentang Waktu */}
         <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1">
-            <span>Total 7 Hari</span>
+            <span>{rangeMeta.cardTitle}</span>
             <CalendarDays className="w-4 h-4 text-blue-500" />
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              {weeklyTotal.toLocaleString('id-ID')}
+              {periodTotal.toLocaleString('id-ID')}
             </span>
             <span className="text-xs font-bold text-slate-500">paket</span>
           </div>
           <div className="text-[11px] text-slate-400 mt-2 font-medium">
-            Akumulasi 1 minggu terakhir
+            {rangeMeta.cardSubtitle} ({numDays} hari)
           </div>
         </div>
 
@@ -435,7 +608,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
             <span className="text-xs font-bold text-slate-500">paket/hari</span>
           </div>
           <div className="text-[11px] text-slate-400 mt-2 font-medium">
-            Target benchmark harian
+            Rata-rata dalam {numDays} hari aktif
           </div>
         </div>
 
@@ -524,7 +697,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
         {EXPEDITION_KEYS.map((key) => {
           const cfg = EXPEDITIONS[key];
           const isSelected = activeExpFilter === key;
-          const totalKey = exp7DayTotals[key];
+          const totalKey = expPeriodTotals[key];
 
           return (
             <button
@@ -558,40 +731,43 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
       {viewStyle === 'chart' ? (
         <div className="relative z-10">
           {/* Active Highlight Info Banner */}
-          <div className="mb-3 px-4 py-2.5 bg-blue-50/70 border border-blue-100 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-blue-900 flex items-center gap-1">
-                <span>Fokus:</span>
-                <span className="text-blue-700 underline">{activeFocusDay.dateFormattedFull}</span>
-              </span>
-              {activeFocusDay.isToday && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white">
-                  Hari Ini
+          {activeFocusDay && (
+            <div className="mb-3 px-4 py-2.5 bg-blue-50/70 border border-blue-100 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-blue-900 flex items-center gap-1">
+                  <span>Fokus:</span>
+                  <span className="text-blue-700 underline">{activeFocusDay.dateFormattedFull}</span>
                 </span>
-              )}
-              {activeFocusDay.isYesterday && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white">
-                  Kemarin
+                {activeFocusDay.isToday && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white">
+                    Hari Ini
+                  </span>
+                )}
+                {activeFocusDay.isYesterday && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white">
+                    Kemarin
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 text-slate-700 font-semibold">
+                <span>
+                  Total: <strong className="font-black text-slate-900 text-sm">{activeFocusDay.displayValue}</strong> paket
                 </span>
-              )}
+                {activeExpFilter === 'ALL' && (
+                  <span className="hidden sm:inline text-slate-500">
+                    (JNE: {activeFocusDay.expCounts.JNE} | J&T: {activeFocusDay.expCounts.JNT} | SPX: {activeFocusDay.expCounts.SPX} | IDX: {activeFocusDay.expCounts.IDX})
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-3 text-slate-700 font-semibold">
-              <span>
-                Total: <strong className="font-black text-slate-900 text-sm">{activeFocusDay.displayValue}</strong> paket
-              </span>
-              {activeExpFilter === 'ALL' && (
-                <span className="hidden sm:inline text-slate-500">
-                  (JNE: {activeFocusDay.expCounts.JNE} | J&T: {activeFocusDay.expCounts.JNT} | SPX: {activeFocusDay.expCounts.SPX} | IDX: {activeFocusDay.expCounts.IDX})
-                </span>
-              )}
-            </div>
-          </div>
+          )}
 
-          {/* Interactive SVG Bar Chart */}
-          <div className="relative w-full overflow-x-auto select-none pt-2">
+          {/* Interactive SVG Bar Chart (Supports horizontal scroll for 14d & 30d views) */}
+          <div className="relative w-full overflow-x-auto select-none pt-2 scrollbar-thin">
             <svg
               viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-              className="w-full h-auto min-w-[560px] overflow-visible"
+              className="h-auto overflow-visible"
+              style={{ minWidth: `${svgWidth}px`, width: '100%' }}
             >
               {/* Horizontal Grid Lines */}
               {[0, 0.25, 0.5, 0.75, 1].map((pct, idx) => {
@@ -636,16 +812,16 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                     opacity="0.8"
                   />
                   <rect
-                    x={svgWidth - paddingRight - 82}
+                    x={svgWidth - paddingRight - 84}
                     y={avgY - 9}
-                    width="82"
+                    width="84"
                     height="16"
                     rx="4"
                     fill="#fef3c7"
                     stroke="#fde68a"
                   />
                   <text
-                    x={svgWidth - paddingRight - 41}
+                    x={svgWidth - paddingRight - 42}
                     y={avgY + 2.5}
                     textAnchor="middle"
                     fontSize="8.5"
@@ -657,10 +833,9 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                 </g>
               )}
 
-              {/* The 7 Day Bars */}
+              {/* Day Bars */}
               {displayDays.map((day, idx) => {
                 const barX = getBarX(idx);
-                const barWidth = 44;
                 const isHovered = hoveredDayIndex === idx;
                 const isSelected = selectedDayIndex === idx;
                 const isFocused = activeFocusIndex === idx;
@@ -691,7 +866,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
 
                 return (
                   <g
-                    key={day.isoDate}
+                    key={day.isoDate + idx}
                     className="cursor-pointer transition-all duration-200"
                     onMouseEnter={() => setHoveredDayIndex(idx)}
                     onMouseLeave={() => setHoveredDayIndex(null)}
@@ -701,9 +876,9 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                   >
                     {/* Background hit area */}
                     <rect
-                      x={barX - 10}
+                      x={barX - 4}
                       y="10"
-                      width={barWidth + 20}
+                      width={barWidth + 8}
                       height="200"
                       fill="transparent"
                     />
@@ -711,11 +886,11 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                     {/* Column Hover Highlight Backdrop */}
                     {isFocused && (
                       <rect
-                        x={barX - 6}
+                        x={barX - 4}
                         y="15"
-                        width={barWidth + 12}
+                        width={barWidth + 8}
                         height="160"
-                        rx="12"
+                        rx="8"
                         fill="#eff6ff"
                         opacity="0.8"
                       />
@@ -744,7 +919,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                               y={seg.y}
                               width={barWidth}
                               height={seg.height}
-                              rx={isTop ? 6 : 0}
+                              rx={isTop ? 5 : 0}
                               fill={seg.color}
                               stroke={isFocused ? '#ffffff' : 'none'}
                               strokeWidth={isFocused ? '1' : '0'}
@@ -760,7 +935,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                         y={barY}
                         width={barWidth}
                         height={totalBarHeight}
-                        rx="6"
+                        rx="5"
                         fill={
                           activeExpFilter !== 'ALL'
                             ? EXPEDITIONS[activeExpFilter]?.colorHex || '#2563eb'
@@ -775,9 +950,9 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                     {/* Top Value Label */}
                     <text
                       x={barX + barWidth / 2}
-                      y={totalVal > 0 ? barY - 6 : 162}
+                      y={totalVal > 0 ? barY - 5 : 162}
                       textAnchor="middle"
-                      fontSize={totalVal > 0 ? '11' : '9'}
+                      fontSize={isDense ? '8.5' : isMedium ? '9.5' : totalVal > 0 ? '11' : '9'}
                       fontWeight={day.isToday || isFocused ? '900' : '700'}
                       fill={totalVal > 0 ? (day.isToday ? '#1d4ed8' : '#334155') : '#94a3b8'}
                     >
@@ -789,7 +964,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                       x={barX + barWidth / 2}
                       y="190"
                       textAnchor="middle"
-                      fontSize="11"
+                      fontSize={isDense ? '9' : isMedium ? '10' : '11'}
                       fontWeight={day.isToday ? '900' : isFocused ? '800' : '700'}
                       fill={day.isToday ? '#1d4ed8' : isFocused ? '#0f172a' : '#64748b'}
                     >
@@ -801,7 +976,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                       x={barX + barWidth / 2}
                       y="204"
                       textAnchor="middle"
-                      fontSize="9.5"
+                      fontSize={isDense ? '8' : isMedium ? '8.5' : '9.5'}
                       fontWeight={day.isToday ? '800' : '600'}
                       fill={day.isToday ? '#2563eb' : '#94a3b8'}
                     >
@@ -812,9 +987,9 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                     {day.isToday && (
                       <g>
                         <rect
-                          x={barX + barWidth / 2 - 20}
+                          x={barX + barWidth / 2 - (isDense ? 17 : 20)}
                           y="210"
-                          width="40"
+                          width={isDense ? 34 : 40}
                           height="13"
                           rx="4"
                           fill="#10b981"
@@ -823,7 +998,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
                           x={barX + barWidth / 2}
                           y="220"
                           textAnchor="middle"
-                          fontSize="7.5"
+                          fontSize={isDense ? '6.5' : '7.5'}
                           fontWeight="900"
                           fill="#ffffff"
                         >
@@ -838,7 +1013,7 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
           </div>
         </div>
       ) : (
-        /* Table View of 7 Days */
+        /* Table View of Selected Period */
         <div className="overflow-x-auto relative z-10 my-2">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
@@ -897,21 +1072,21 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
             </tbody>
             <tfoot>
               <tr className="bg-slate-100 font-bold text-slate-900 border-t border-slate-300">
-                <td className="py-3 px-3">Total 7 Hari</td>
+                <td className="py-3 px-3">{rangeMeta.cardTitle}</td>
                 <td className="py-3 px-3 text-center text-blue-700 font-mono">
-                  {exp7DayTotals.JNE}
+                  {expPeriodTotals.JNE}
                 </td>
                 <td className="py-3 px-3 text-center text-red-700 font-mono">
-                  {exp7DayTotals.JNT}
+                  {expPeriodTotals.JNT}
                 </td>
                 <td className="py-3 px-3 text-center text-orange-700 font-mono">
-                  {exp7DayTotals.SPX}
+                  {expPeriodTotals.SPX}
                 </td>
                 <td className="py-3 px-3 text-center text-red-900 font-mono">
-                  {exp7DayTotals.IDX}
+                  {expPeriodTotals.IDX}
                 </td>
                 <td className="py-3 px-3 text-right text-slate-950 font-mono text-base font-black">
-                  {weeklyTotal}
+                  {periodTotal}
                 </td>
                 <td className="py-3 px-3 text-right text-slate-600">
                   Rata-rata: {dailyAverage}/hari
@@ -928,8 +1103,8 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
           <span className="text-slate-400 font-semibold text-[11px]">Legenda:</span>
           {EXPEDITION_KEYS.map((key) => {
             const cfg = EXPEDITIONS[key];
-            const sum = exp7DayTotals[key];
-            const pct = allExp7DaySum > 0 ? Math.round((sum / allExp7DaySum) * 100) : 0;
+            const sum = expPeriodTotals[key];
+            const pct = allExpPeriodSum > 0 ? Math.round((sum / allExpPeriodSum) * 100) : 0;
             return (
               <div key={key} className="flex items-center gap-1.5">
                 <span
