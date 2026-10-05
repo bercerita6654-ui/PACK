@@ -68,8 +68,8 @@ class SoundFX {
       osc2.frequency.setValueAtTime(1174, now + 0.05);
       osc2.frequency.exponentialRampToValueAtTime(2349, now + 0.22);
 
-      gain.gain.setValueAtTime(0.25, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      gain.gain.setValueAtTime(0.55, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
 
       osc1.connect(gain);
       osc2.connect(gain);
@@ -166,8 +166,9 @@ class SoundFX {
 
       const utterance = new SpeechSynthesisUtterance(phrase);
       utterance.lang = 'id-ID';
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      utterance.rate = 0.98;
+      utterance.pitch = 1.05;
 
       // Pick Indonesian voice if available in the browser
       const voices = window.speechSynthesis.getVoices();
