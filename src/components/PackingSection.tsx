@@ -147,6 +147,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
   >([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<'Semua' | PlatformType>('Semua');
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [duplicateWarning, setDuplicateWarning] = useState<PackedOrder | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState<boolean>(false);
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState<boolean>(false);
@@ -163,6 +164,42 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const lastScannedOrder = orders.length > 0 ? orders[orders.length - 1] : null;
+
+  const handleCancelLastScan = () => {
+    if (!lastScannedOrder) return;
+    onRemoveOrder(lastScannedOrder.id);
+    setRecentScans((prev) => prev.filter((r) => r.id !== lastScannedOrder.id));
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      next.delete(lastScannedOrder.id);
+      return next;
+    });
+    showToast(`Scan terakhir ${lastScannedOrder.orderNumber} dibatalkan & dihapus.`, 'info');
+  };
+
+  const handleRemoveRecentScan = (item: { id: string; orderNumber: string }) => {
+    onRemoveOrder(item.id);
+    setRecentScans((prev) => prev.filter((r) => r.id !== item.id));
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      next.delete(item.id);
+      return next;
+    });
+    showToast(`Pesanan ${item.orderNumber} dibatalkan & dihapus.`, 'info');
+  };
+
+  const handleDeleteSelectedOrders = () => {
+    if (selectedOrderIds.size === 0) return;
+    const count = selectedOrderIds.size;
+    selectedOrderIds.forEach((id) => {
+      onRemoveOrder(id);
+    });
+    setRecentScans((prev) => prev.filter((r) => !selectedOrderIds.has(r.id)));
+    setSelectedOrderIds(new Set());
+    showToast(`${count} pesanan yang dibatalkan berhasil dihapus.`, 'info');
+  };
 
   // Close suggestions when clicking outside
   useEffect(() => {
@@ -1760,7 +1797,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                   }}
                   onKeyDown={handleKeyDown}
                   placeholder="Scan barcode atau ketik no. pesanan..."
-                  className="w-full pl-11 pr-28 py-3 bg-slate-50 border-2 border-slate-300 focus:border-indigo-600 focus:bg-white rounded-xl text-base sm:text-lg font-mono font-bold uppercase text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 placeholder:text-sm focus:outline-none transition-colors shadow-xs"
+                  className="w-full pl-11 pr-28 py-3.5 bg-slate-50/90 border-2 border-slate-300 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/15 focus:bg-white rounded-2xl text-base sm:text-lg font-mono font-bold uppercase text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 placeholder:text-sm focus:outline-none transition-all shadow-xs"
                   autoComplete="off"
                   spellCheck="false"
                 />
@@ -1892,7 +1929,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                 type="button"
                 id="btn-open-camera-scanner-action"
                 onClick={() => setIsCameraScannerOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
+                className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all shrink-0 cursor-pointer"
                 title="Buka Kamera HP / Web untuk scan barcode resi langsung"
               >
                 <Camera className="w-4 h-4" />
@@ -1903,7 +1940,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                 type="button"
                 id="btn-submit-scan"
                 onClick={() => handleProcessScan()}
-                className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-5 sm:px-6 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-xs transition-colors shrink-0 cursor-pointer"
+                className="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:bg-indigo-800 text-white px-6 sm:px-7 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-indigo-600/25 active:scale-[0.98] transition-all shrink-0 cursor-pointer"
               >
                 <span>Scan</span>
                 <ArrowRight className="w-4 h-4" />
@@ -1939,7 +1976,30 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
               </button>
             </div>
 
-            {/* Compact Recent Scans Chips */}
+            {/* Quick Cancel Last Scan Banner (Jika baru saja scan dan tidak jadi di-input / dibatalkan) */}
+            {lastScannedOrder && (
+              <div className="flex items-center justify-between gap-2 p-2.5 px-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs shadow-2xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-amber-800 font-bold shrink-0">Scan Terakhir:</span>
+                  <span className="font-mono font-black text-slate-900 truncate">{lastScannedOrder.orderNumber}</span>
+                  <span className="text-[11px] text-slate-500 shrink-0 hidden sm:inline">
+                    ({lastScannedOrder.platform} • {lastScannedOrder.timestamp})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  id="btn-cancel-last-packing-scan"
+                  onClick={handleCancelLastScan}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs shadow-2xs transition-all shrink-0 cursor-pointer"
+                  title="Batalkan dan hapus nomor pesanan terakhir ini (jika salah input / batal)"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Batalkan / Hapus Scan Terakhir</span>
+                </button>
+              </div>
+            )}
+
+            {/* Compact Recent Scans Chips with inline Delete Option */}
             {recentScans.length > 0 && (
               <div className="pt-1 flex items-center gap-2 overflow-x-auto text-xs">
                 <span className="text-slate-400 font-medium shrink-0 flex items-center gap-1">
@@ -1952,7 +2012,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                     return (
                       <div
                         key={item.id}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-mono text-xs ${
+                        className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg border font-mono text-xs ${
                           item.isDuplicate
                             ? 'bg-rose-50 border-rose-200 text-rose-700 font-bold'
                             : 'bg-slate-50 border-slate-200 text-slate-800'
@@ -1971,6 +2031,17 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                         >
                           {item.isDuplicate ? 'Duplikat' : item.platform}
                         </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveRecentScan(item);
+                          }}
+                          className="p-0.5 hover:bg-rose-100 text-slate-400 hover:text-rose-700 rounded transition-colors ml-0.5 cursor-pointer"
+                          title={`Batalkan / Hapus pesanan ${item.orderNumber}`}
+                        >
+                          <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                        </button>
                       </div>
                     );
                   })}
@@ -2283,6 +2354,20 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                   </button>
                 )}
 
+                {/* Delete Selected Orders Button */}
+                {selectedOrderIds.size > 0 && (
+                  <button
+                    type="button"
+                    id="btn-delete-selected-packing"
+                    onClick={handleDeleteSelectedOrders}
+                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer animate-in fade-in"
+                    title="Hapus semua nomor pesanan yang dicentang (batal di-input)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus Terpilih ({selectedOrderIds.size})</span>
+                  </button>
+                )}
+
                 {/* Clear Button */}
                 {orders.length > 0 && (
                   <button
@@ -2304,6 +2389,21 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
               <table className="w-full text-left text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-100/75 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    <th className="p-3 text-center w-10">
+                      <input
+                        type="checkbox"
+                        checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedOrderIds.has(o.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedOrderIds(new Set(filteredOrders.map((o) => o.id)));
+                          } else {
+                            setSelectedOrderIds(new Set());
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                        title="Pilih semua untuk dihapus / dibatalkan"
+                      />
+                    </th>
                     <th className="p-3 text-center w-12">#</th>
                     <th className="p-3">No. Pesanan</th>
                     <th className="p-3">Platform</th>
@@ -2315,7 +2415,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-slate-400">
+                      <td colSpan={7} className="text-center py-12 text-slate-400">
                         <ScanBarcode className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                         <p className="font-semibold text-slate-600 text-sm">
                           {searchQuery || selectedPlatformFilter !== 'Semua'
@@ -2330,11 +2430,28 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                   ) : (
                     filteredOrders.map((order, idx) => {
                       const platColor = getPlatformColor(order.platform);
+                      const isSelected = selectedOrderIds.has(order.id);
                       return (
                         <tr
                           key={order.id}
-                          className="hover:bg-slate-50/80 transition-colors group"
+                          className={`hover:bg-slate-50/80 transition-colors group ${
+                            isSelected ? 'bg-rose-50/40' : ''
+                          }`}
                         >
+                          <td className="p-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                const next = new Set(selectedOrderIds);
+                                if (e.target.checked) next.add(order.id);
+                                else next.delete(order.id);
+                                setSelectedOrderIds(next);
+                              }}
+                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                              title="Pilih untuk dihapus"
+                            />
+                          </td>
                           <td className="p-3 text-center text-xs font-semibold text-slate-400">
                             {filteredOrders.length - idx}
                           </td>

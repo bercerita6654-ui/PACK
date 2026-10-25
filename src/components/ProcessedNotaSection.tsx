@@ -134,9 +134,33 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [platformFilter, setPlatformFilter] = useState<'Semua' | PlatformType>('Semua');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedNotaIds, setSelectedNotaIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState<boolean>(false);
   const [todayStatsSource, setTodayStatsSource] = useState<'sheet' | 'local'>('sheet');
+
+  const lastNota = notas.length > 0 ? notas[notas.length - 1] : null;
+
+  const handleCancelLastNota = () => {
+    if (!lastNota) return;
+    onRemoveNota(lastNota.id);
+    setSelectedNotaIds((prev) => {
+      const next = new Set(prev);
+      next.delete(lastNota.id);
+      return next;
+    });
+    showToast(`Nota terakhir ${lastNota.orderNumber} dibatalkan & dihapus.`, 'info');
+  };
+
+  const handleDeleteSelectedNotas = () => {
+    if (selectedNotaIds.size === 0) return;
+    const count = selectedNotaIds.size;
+    selectedNotaIds.forEach((id) => {
+      onRemoveNota(id);
+    });
+    setSelectedNotaIds(new Set());
+    showToast(`${count} nota yang dibatalkan berhasil dihapus.`, 'info');
+  };
 
   // Local fallback threshold if not provided from parent (default: 1 hari / 1440 menit)
   const [localThreshold, setLocalThreshold] = useState<number>(() => {
@@ -1539,15 +1563,28 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                               {nota.timestamp}
                             </span>
                           </div>
-                          <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
-                              nota.isPacked
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {nota.isPacked ? 'Selesai' : 'Belum Packing'}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                nota.isPacked
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {nota.isPacked ? 'Selesai' : 'Belum Packing'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onRemoveNota(nota.id);
+                                showToast(`Nota ${nota.orderNumber} dibatalkan & dihapus.`, 'info');
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="Batalkan / Hapus nota ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1602,15 +1639,28 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                               {nota.timestamp}
                             </span>
                           </div>
-                          <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
-                              nota.isPacked
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {nota.isPacked ? 'Selesai' : 'Belum Packing'}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                nota.isPacked
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {nota.isPacked ? 'Selesai' : 'Belum Packing'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onRemoveNota(nota.id);
+                                showToast(`Nota ${nota.orderNumber} dibatalkan & dihapus.`, 'info');
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="Batalkan / Hapus nota ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1689,7 +1739,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                     }
                   }}
                   placeholder="Arahkan barcode scanner ke nota atau ketik nomor pesanan lalu Enter..."
-                  className="w-full pl-11 pr-24 py-3 bg-slate-50 border-2 border-slate-200 focus:border-amber-500 focus:bg-white rounded-xl text-base font-bold text-slate-900 tracking-wider placeholder:text-slate-400 placeholder:font-normal placeholder:tracking-normal transition-all outline-hidden shadow-2xs"
+                  className="w-full pl-11 pr-24 py-3.5 bg-slate-50/90 border-2 border-slate-200 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 focus:bg-white rounded-2xl text-base font-bold text-slate-900 tracking-wider placeholder:text-slate-400 placeholder:font-normal placeholder:tracking-normal transition-all outline-hidden shadow-2xs"
                   autoComplete="off"
                 />
                 {scanInput && (
@@ -1708,7 +1758,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                 type="button"
                 id="btn-open-camera-scanner-nota"
                 onClick={() => setIsCameraScannerOpen(true)}
-                className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 text-sm shrink-0 cursor-pointer"
+                className="px-4 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-2xl shadow-md shadow-emerald-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 text-sm shrink-0 cursor-pointer"
                 title="Buka Scanner Barcode Kamera (HP / Web)"
               >
                 <Camera className="w-4 h-4" />
@@ -1719,7 +1769,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                 type="button"
                 id="btn-submit-scan-nota"
                 onClick={() => handleProcessScan()}
-                className="px-6 py-3 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold rounded-xl shadow-xs hover:shadow-md transition-all flex items-center justify-center gap-2 text-sm shrink-0 cursor-pointer"
+                className="px-6 sm:px-7 py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 active:bg-amber-800 text-white font-bold rounded-2xl shadow-md shadow-amber-600/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Catat Nota</span>
@@ -1761,6 +1811,29 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Quick Cancel Last Nota Banner (jika salah scan atau pesanan dibatalkan) */}
+            {lastNota && (
+              <div className="flex items-center justify-between gap-2 p-2.5 px-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs shadow-2xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-amber-800 font-bold shrink-0">Nota Terakhir:</span>
+                  <span className="font-mono font-black text-slate-900 truncate">{lastNota.orderNumber}</span>
+                  <span className="text-[11px] text-slate-500 shrink-0 hidden sm:inline">
+                    ({lastNota.platform} • {lastNota.timestamp})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  id="btn-cancel-last-nota-scan"
+                  onClick={handleCancelLastNota}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs shadow-2xs transition-all shrink-0 cursor-pointer"
+                  title="Batalkan dan hapus nomor nota terakhir ini jika salah input atau dibatalkan"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Batalkan / Hapus Nota Terakhir</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           /* Batch Paste Mode */
@@ -1982,17 +2055,32 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             )}
           </div>
 
-          {/* Reset / Clear List */}
-          {totalNotas > 0 && (
-            <button
-              type="button"
-              onClick={() => setConfirmClearOpen(true)}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer self-end sm:self-auto"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Reset Daftar Nota</span>
-            </button>
-          )}
+          {/* Bulk Delete & Reset / Clear List */}
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {selectedNotaIds.size > 0 && (
+              <button
+                type="button"
+                id="btn-delete-selected-notas"
+                onClick={handleDeleteSelectedNotas}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl shadow-xs transition-all cursor-pointer"
+                title="Hapus semua nota yang dipilih"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus Terpilih ({selectedNotaIds.size})</span>
+              </button>
+            )}
+
+            {totalNotas > 0 && (
+              <button
+                type="button"
+                onClick={() => setConfirmClearOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Reset Daftar Nota</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Table Content */}
@@ -2000,7 +2088,25 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3 px-4 w-12 text-center">#</th>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    aria-label="Pilih semua nota"
+                    checked={
+                      filteredNotas.length > 0 &&
+                      filteredNotas.every((n) => selectedNotaIds.has(n.id))
+                    }
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedNotaIds(new Set(filteredNotas.map((n) => n.id)));
+                      } else {
+                        setSelectedNotaIds(new Set());
+                      }
+                    }}
+                    className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 cursor-pointer"
+                  />
+                </th>
+                <th className="py-3 px-3 w-12 text-center">#</th>
                 <th className="py-3 px-4">No. Nota / Pesanan</th>
                 <th className="py-3 px-4">Platform</th>
                 <th className="py-3 px-4">Waktu Admin Scan</th>
@@ -2013,19 +2119,41 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                 filteredNotas.map((nota, index) => {
                   const elapsedMinutes = getNotaElapsedMinutes(nota, nowMs);
                   const isOverdue = !nota.isPacked && elapsedMinutes >= currentThreshold;
+                  const isSelected = selectedNotaIds.has(nota.id);
 
                   return (
                     <tr
                       key={nota.id}
                       className={`transition-colors ${
-                        isOverdue
+                        isSelected
+                          ? 'bg-amber-100/50'
+                          : isOverdue
                           ? 'bg-rose-50/80 hover:bg-rose-100/80 border-l-4 border-l-rose-500 shadow-2xs'
                           : nota.isPacked
                           ? 'bg-emerald-50/20 hover:bg-slate-50'
                           : 'bg-amber-50/10 hover:bg-slate-50'
                       }`}
                     >
-                      <td className="py-3 px-4 text-center text-slate-400 font-mono text-[11px]">
+                      <td className="py-3 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Pilih nota ${nota.orderNumber}`}
+                          checked={isSelected}
+                          onChange={(e) => {
+                            setSelectedNotaIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) {
+                                next.add(nota.id);
+                              } else {
+                                next.delete(nota.id);
+                              }
+                              return next;
+                            });
+                          }}
+                          className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
                         <div>{index + 1}</div>
                         {isOverdue && (
                           <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-200 text-rose-900 uppercase">
@@ -2152,7 +2280,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     <div className="max-w-md mx-auto space-y-3">
                       <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
                         <FileText className="w-6 h-6" />

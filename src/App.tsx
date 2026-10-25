@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { Package } from 'lucide-react';
 import { Header } from './components/Header';
 import { ExpeditionCards } from './components/ExpeditionCards';
 import { QuickAddSection } from './components/QuickAddSection';
 import { LogTable } from './components/LogTable';
 import { ExpeditionChart } from './components/ExpeditionChart';
-import { WeeklyComparisonChart } from './components/WeeklyComparisonChart';
 import { PackingSection } from './components/PackingSection';
 import { ProcessedNotaSection } from './components/ProcessedNotaSection';
 import { ConfirmResetModal } from './components/ConfirmResetModal';
@@ -15,6 +15,7 @@ import { GoogleDriveModal } from './components/GoogleDriveModal';
 import { GoogleSessionModal } from './components/GoogleSessionModal';
 import { GoogleSheetHistorySection } from './components/GoogleSheetHistorySection';
 import { BerandaSection } from './components/BerandaSection';
+import { GoogleLoginScreen } from './components/GoogleLoginScreen';
 import { ConfirmWorkspaceActionModal } from './components/ConfirmWorkspaceActionModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
 import { ToastContainer } from './components/Toast';
@@ -113,8 +114,11 @@ export default function App() {
   };
 
   // Google Authentication & Workspace state
-  const [user, setUser] = useState<User | null>(() => getCachedUserProfile() as User | null);
+  const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(() => getStoredAccessToken());
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+  const [isSigningInGoogle, setIsSigningInGoogle] = useState<boolean>(false);
+  const [isGuestMode, setIsGuestMode] = useState<boolean>(false);
   const [isRenewingSession, setIsRenewingSession] = useState<boolean>(false);
   const [activeSpreadsheet, setActiveSpreadsheet] = useState<ActiveSpreadsheet | null>(() => {
     try {
@@ -395,10 +399,12 @@ export default function App() {
         if (token) {
           setAccessToken(token);
         }
+        setIsAuthChecking(false);
       },
       () => {
         setUser(null);
         setAccessToken(null);
+        setIsAuthChecking(false);
       }
     );
     return () => unsubscribe();
@@ -467,6 +473,32 @@ export default function App() {
 
   const handleGoogleSignIn = handleGoogleSessionAction;
 
+  // Direct Google Sign In for the initial Login Screen
+  const handleGoogleSignInDirect = async () => {
+    setIsSigningInGoogle(true);
+    try {
+      const result = await googleSignIn(true);
+      if (result) {
+        setUser(result.user);
+        setAccessToken(result.accessToken);
+        setIsGuestMode(false);
+        showToast(`Selamat datang, ${result.user.displayName || result.user.email}!`, 'success');
+        if (!activeSpreadsheet) {
+          setIsGoogleDriveModalOpen(true);
+        }
+      }
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user') {
+        showToast('Login Google dibatalkan.', 'info');
+      } else {
+        console.error('Google Sign In error:', err);
+        showToast(err?.message || 'Gagal login dengan akun Google.', 'error');
+      }
+    } finally {
+      setIsSigningInGoogle(false);
+    }
+  };
+
   // Handle Switch Google Account
   const handleSwitchGoogleAccount = async () => {
     setIsRenewingSession(true);
@@ -488,11 +520,12 @@ export default function App() {
     }
   };
 
-  // Handle Google Sign Out
+  // Handle Google Sign Out (kembali ke tampilan login Google)
   const handleGoogleSignOut = async () => {
     await logout();
     setUser(null);
     setAccessToken(null);
+    setIsGuestMode(false);
     showToast('Berhasil keluar dari akun Google.', 'info');
   };
 
@@ -1672,8 +1705,50 @@ export default function App() {
     showToast('Pengaturan Google Sheets berhasil diperbarui.', 'success');
   };
 
+  // Tampilan loading saat inisialisasi sesi Firebase Auth
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-4">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 animate-pulse">
+            <Package className="w-8 h-8 text-white" />
+          </div>
+          <div className="absolute -inset-2 rounded-3xl bg-emerald-500/20 blur-lg animate-pulse" />
+        </div>
+        <div className="mt-5 flex items-center gap-2 text-slate-400 text-sm font-medium">
+          <svg className="w-4 h-4 animate-spin text-emerald-400" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span>Memeriksa sesi Google...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Tampilan pertama yang muncul adalah Login Google jika belum login
+  if (!user && !isGuestMode) {
+    return (
+      <>
+        <GoogleLoginScreen
+          onGoogleSignIn={handleGoogleSignInDirect}
+          isLoading={isSigningInGoogle}
+          onContinueAsGuest={() => setIsGuestMode(true)}
+        />
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 p-4 sm:p-6 md:p-8">
+    <div className="min-h-screen bg-gradient-to-b from-slate-100/90 via-slate-50 to-slate-100 text-slate-800 p-3 sm:p-5 md:p-8 relative selection:bg-emerald-500 selection:text-white">
+      {/* Ambient background glows */}
+      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+        <div className="absolute -top-32 left-1/4 w-[550px] h-[550px] bg-indigo-500/5 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 -right-32 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-10 left-10 w-[500px] h-[500px] bg-amber-500/4 rounded-full blur-3xl" />
+      </div>
+
       <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
         {/* Header */}
         <Header
@@ -1690,7 +1765,8 @@ export default function App() {
           activeSpreadsheet={activeSpreadsheet}
           onOpenGoogleDriveModal={() => setIsGoogleDriveModalOpen(true)}
           onOpenSessionModal={() => setIsGoogleSessionModalOpen(true)}
-          onGoogleSignIn={handleGoogleSignIn}
+          onGoogleSignIn={handleGoogleSignInDirect}
+          onLogout={handleGoogleSignOut}
           onRenewSession={handleGoogleSessionAction}
           isRenewingSession={isRenewingSession}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
@@ -1711,15 +1787,6 @@ export default function App() {
             >
               {/* 4 Expedition Summary Cards */}
               <ExpeditionCards counts={appData.counts} />
-
-              {/* Grafik Perbandingan Mingguan (Tren Jumlah Paket Hari ke Hari dalam 1 Minggu Terakhir) */}
-              <WeeklyComparisonChart
-                logs={allLogs}
-                todayCounts={appData.counts}
-                currentDate={appData.date}
-                packedOrders={packedOrders}
-                showToast={showToast}
-              />
 
               {/* Quick Add Section */}
               <QuickAddSection
@@ -1757,6 +1824,7 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+              className="space-y-6 sm:space-y-8"
             >
               {/* Beranda Dashboard Operasional Section */}
               <BerandaSection

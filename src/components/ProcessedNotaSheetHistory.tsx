@@ -18,11 +18,13 @@ import {
   Calendar,
   FileText,
   Layers,
+  Trash2,
 } from 'lucide-react';
 import { PlatformType, PackedOrder, ProcessedNota, ToastItem, ToastOptions } from '../types';
 import {
   fetchProcessedNotasHistory,
   fetchCrossReferencedNotasAndPacking,
+  deleteRowFromSheet,
 } from '../services/googleWorkspace';
 import { isAuthExpiredError, invalidateStoredToken } from '../services/googleAuth';
 import { getPlatformColor } from '../utils/platformDetector';
@@ -201,6 +203,31 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
 
   const [sortDescending, setSortDescending] = useState<boolean>(true); // latest rows first
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deleteConfirmRow, setDeleteConfirmRow] = useState<SheetProcessedNotaRow | null>(null);
+  const [isDeletingRow, setIsDeletingRow] = useState<boolean>(false);
+
+  const handleDeleteRow = async (row: SheetProcessedNotaRow) => {
+    if (!accessToken) {
+      showToast('Harap login Google terlebih dahulu.', 'warning');
+      return;
+    }
+    setIsDeletingRow(true);
+    try {
+      const tabName = row.sourceSheetTab === 'Packing Reg' ? 'Packing Reg' : targetSheetTab;
+      await deleteRowFromSheet(accessToken, targetSpreadsheetId, tabName, row.rowNumber);
+      showToast(`Baris nomor ${row.orderNumber} berhasil dihapus dari Google Sheet.`, 'success');
+      setDeleteConfirmRow(null);
+      if (externalOnRefresh) {
+        externalOnRefresh();
+      } else {
+        loadSheetHistory();
+      }
+    } catch (err: any) {
+      showToast(`Gagal menghapus baris dari sheet: ${err.message}`, 'error');
+    } finally {
+      setIsDeletingRow(false);
+    }
+  };
 
   const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit`;
 
@@ -1595,14 +1622,24 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
                     </td>
 
                     <td className="py-2.5 px-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleCopySingle(row.orderNumber, `sheet-${idx}`)}
-                        className="px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 rounded-lg transition-all"
-                        title="Salin nomor pesanan"
-                      >
-                        {copiedId === `sheet-${idx}` ? 'Tersalin' : 'Salin'}
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleCopySingle(row.orderNumber, `sheet-${idx}`)}
+                          className="px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 rounded-lg transition-all"
+                          title="Salin nomor pesanan"
+                        >
+                          {copiedId === `sheet-${idx}` ? 'Tersalin' : 'Salin'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmRow(row)}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                          title="Hapus baris pesanan ini dari Google Sheet (misal: pesanan dibatalkan)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1618,6 +1655,64 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
           </table>
         )}
       </div>
+
+      {/* Confirmation Modal Delete Row from Google Sheet */}
+      {deleteConfirmRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-rose-50 text-rose-600 rounded-xl shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Hapus Baris dari Google Sheet?
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Tindakan ini menghapus baris secara permanen di spreadsheet Google.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nomor Pesanan:</span>
+                <span className="font-mono font-bold text-slate-900">{deleteConfirmRow.orderNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Platform:</span>
+                <span className="font-bold text-slate-800">{deleteConfirmRow.platform}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tab Sheet:</span>
+                <span className="font-bold text-indigo-700">
+                  {deleteConfirmRow.sourceSheetTab === 'Packing Reg' ? 'Packing Reg' : targetSheetTab} (Baris {deleteConfirmRow.rowNumber})
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmRow(null)}
+                disabled={isDeletingRow}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteRow(deleteConfirmRow)}
+                disabled={isDeletingRow}
+                className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {isDeletingRow ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>{isDeletingRow ? 'Menghapus...' : 'Ya, Hapus Baris'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer info */}
       <div className="p-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 px-4">

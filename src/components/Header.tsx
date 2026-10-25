@@ -13,6 +13,7 @@ import {
   FileText,
   RefreshCw,
   LogIn,
+  LogOut,
   LayoutDashboard,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
@@ -33,6 +34,7 @@ interface HeaderProps {
   onOpenGoogleDriveModal: () => void;
   onOpenSessionModal?: () => void;
   onGoogleSignIn: () => void;
+  onLogout?: () => void;
   onRenewSession?: () => void;
   isRenewingSession?: boolean;
   onOpenSettings: () => void;
@@ -55,6 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenGoogleDriveModal,
   onOpenSessionModal,
   onGoogleSignIn,
+  onLogout,
   onRenewSession,
   isRenewingSession = false,
   onOpenSettings,
@@ -79,21 +82,30 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header
       id="app-header"
-      className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4"
+      className="bg-white/95 backdrop-blur-md p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200/90 space-y-4 relative overflow-hidden"
     >
+      {/* Top subtle ambient accent bar */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 via-indigo-500 to-amber-500" />
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-              <Package className="w-6 h-6" />
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-tr from-indigo-600 via-indigo-700 to-violet-700 text-white rounded-2xl shadow-md shadow-indigo-600/25 ring-2 ring-indigo-100 shrink-0">
+              <Package className="w-6 h-6 stroke-[2.2]" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
-                Rekap Kiriman Reguler
-              </h1>
-              <div className="flex items-center gap-2 text-slate-500 text-sm mt-0.5">
-                <Calendar className="w-4 h-4 text-slate-400" />
-                <span id="currentDate" className="font-medium">
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+                  Rekap Kiriman Reguler
+                </h1>
+                <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live Sync
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-500 text-xs sm:text-sm mt-0.5">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                <span id="currentDate" className="font-semibold text-slate-600">
                   {appData.date || 'Memuat tanggal...'}
                 </span>
               </div>
@@ -169,6 +181,18 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   <HardDrive className="w-4 h-4 text-emerald-600" />
                 </button>
+
+                {onLogout && (
+                  <button
+                    type="button"
+                    id="btn-header-logout"
+                    onClick={onLogout}
+                    className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-white rounded-lg transition-all cursor-pointer"
+                    title="Keluar dari akun Google (Kembali ke Halaman Login)"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           ) : (

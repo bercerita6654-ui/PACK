@@ -579,75 +579,83 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
       {/* 4 Summary Stat Cards for the Period */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 my-5 relative z-10">
         {/* Total Rentang Waktu */}
-        <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1">
+        <div className="bg-gradient-to-br from-blue-50/70 via-white to-slate-50/50 rounded-2xl p-4 sm:p-5 border border-blue-100 shadow-2xs flex flex-col justify-between hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-xs text-slate-500 font-bold mb-1">
             <span>{rangeMeta.cardTitle}</span>
-            <CalendarDays className="w-4 h-4 text-blue-500" />
+            <div className="p-1 bg-blue-100/80 text-blue-700 rounded-lg">
+              <CalendarDays className="w-3.5 h-3.5" />
+            </div>
           </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+          <div className="flex items-baseline gap-1.5 mt-2">
+            <span className="text-2xl sm:text-3xl font-mono font-black text-slate-900 tracking-tight tabular-nums">
               {periodTotal.toLocaleString('id-ID')}
             </span>
             <span className="text-xs font-bold text-slate-500">paket</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-2 font-medium">
+          <div className="text-[11px] text-slate-500 mt-2 font-medium">
             {rangeMeta.cardSubtitle} ({numDays} hari)
           </div>
         </div>
 
         {/* Rata-Rata Harian */}
-        <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1">
+        <div className="bg-gradient-to-br from-amber-50/70 via-white to-slate-50/50 rounded-2xl p-4 sm:p-5 border border-amber-100 shadow-2xs flex flex-col justify-between hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-xs text-slate-500 font-bold mb-1">
             <span>Rata-Rata Harian</span>
-            <Zap className="w-4 h-4 text-amber-500" />
+            <div className="p-1 bg-amber-100/80 text-amber-700 rounded-lg">
+              <Zap className="w-3.5 h-3.5" />
+            </div>
           </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+          <div className="flex items-baseline gap-1.5 mt-2">
+            <span className="text-2xl sm:text-3xl font-mono font-black text-slate-900 tracking-tight tabular-nums">
               {dailyAverage.toLocaleString('id-ID')}
             </span>
             <span className="text-xs font-bold text-slate-500">paket/hari</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-2 font-medium">
+          <div className="text-[11px] text-slate-500 mt-2 font-medium">
             Rata-rata dalam {numDays} hari aktif
           </div>
         </div>
 
         {/* Hari Puncak (Tertinggi) */}
-        <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1">
+        <div className="bg-gradient-to-br from-emerald-50/70 via-white to-slate-50/50 rounded-2xl p-4 sm:p-5 border border-emerald-100 shadow-2xs flex flex-col justify-between hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-xs text-slate-500 font-bold mb-1">
             <span>Hari Puncak</span>
-            <Award className="w-4 h-4 text-emerald-500" />
+            <div className="p-1 bg-emerald-100/80 text-emerald-700 rounded-lg">
+              <Award className="w-3.5 h-3.5" />
+            </div>
           </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl sm:text-2xl font-black text-emerald-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 mt-2">
+            <span className="text-xl sm:text-2xl font-black text-emerald-800 tracking-tight">
               {peakDay.dayNameShort}
             </span>
-            <span className="text-sm font-bold text-slate-600">
+            <span className="text-sm font-mono font-bold text-slate-700 tabular-nums">
               ({peakDay.displayValue} pkt)
             </span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-2 font-medium">
+          <div className="text-[11px] text-slate-500 mt-2 font-medium">
             {peakDay.dateFormattedShort} (Volume terbesar)
           </div>
         </div>
 
         {/* Tren Hari Ini vs Kemarin */}
-        <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-slate-500 font-semibold mb-1">
+        <div className="bg-gradient-to-br from-indigo-50/70 via-white to-slate-50/50 rounded-2xl p-4 sm:p-5 border border-indigo-100 shadow-2xs flex flex-col justify-between hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-xs text-slate-500 font-bold mb-1">
             <span>Hari Ini vs Kemarin</span>
-            {diffVsYesterday > 0 ? (
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
-            ) : diffVsYesterday < 0 ? (
-              <TrendingDown className="w-4 h-4 text-rose-500" />
-            ) : (
-              <Minus className="w-4 h-4 text-slate-400" />
-            )}
+            <div className={`p-1 rounded-lg ${diffVsYesterday > 0 ? 'bg-emerald-100/80 text-emerald-700' : diffVsYesterday < 0 ? 'bg-rose-100/80 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+              {diffVsYesterday > 0 ? (
+                <TrendingUp className="w-3.5 h-3.5" />
+              ) : diffVsYesterday < 0 ? (
+                <TrendingDown className="w-3.5 h-3.5" />
+              ) : (
+                <Minus className="w-3.5 h-3.5" />
+              )}
+            </div>
           </div>
-          <div className="flex items-baseline gap-1.5">
+          <div className="flex items-baseline gap-1.5 mt-2">
             <span
-              className={`text-2xl sm:text-3xl font-black tracking-tight ${
+              className={`text-2xl sm:text-3xl font-mono font-black tracking-tight tabular-nums ${
                 diffVsYesterday > 0
-                  ? 'text-emerald-600'
+                  ? 'text-emerald-700'
                   : diffVsYesterday < 0
                   ? 'text-rose-600'
                   : 'text-slate-700'
@@ -658,18 +666,20 @@ export const WeeklyComparisonChart: React.FC<WeeklyComparisonChartProps> = ({
             <span className="text-xs font-bold text-slate-500">paket</span>
             {yesterdayData.displayValue > 0 && (
               <span
-                className={`text-[11px] font-black px-1.5 py-0.5 rounded-md ${
-                  diffVsYesterday >= 0
+                className={`ml-auto text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                  diffVsYesterday > 0
                     ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-rose-100 text-rose-800'
+                    : diffVsYesterday < 0
+                    ? 'bg-rose-100 text-rose-800'
+                    : 'bg-slate-100 text-slate-600'
                 }`}
               >
-                {diffVsYesterday >= 0 ? `+${percentVsYesterday}%` : `${percentVsYesterday}%`}
+                {percentVsYesterday > 0 ? `+${percentVsYesterday}%` : `${percentVsYesterday}%`}
               </span>
             )}
           </div>
-          <div className="text-[11px] text-slate-400 mt-2 font-medium">
-            Hari ini: {todayData.displayValue} | Kemarin: {yesterdayData.displayValue}
+          <div className="text-[11px] text-slate-500 mt-2 font-medium">
+            vs kemarin ({yesterdayData.displayValue} pkt)
           </div>
         </div>
       </div>

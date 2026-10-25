@@ -1523,4 +1523,59 @@ export async function markOrdersAsUnpackedInSpreadsheet(
   return { updatedInPacking, updatedInNota };
 }
 
+/**
+ * Delete a specific row from a Google Sheet tab (e.g. for cancelled orders)
+ */
+export async function deleteRowFromSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  tabTitle: string,
+  rowNumber: number
+): Promise<boolean> {
+  if (rowNumber < 2) {
+    throw new Error('Baris header tidak dapat dihapus.');
+  }
+
+  const meta = await getSpreadsheetDetails(accessToken, spreadsheetId);
+  const targetSheet =
+    meta.sheets.find((s) => s.title.toLowerCase() === tabTitle.toLowerCase()) ||
+    meta.sheets[0];
+  if (!targetSheet) throw new Error(`Tab "${tabTitle}" tidak ditemukan.`);
+
+  const res = await fetchWithRetry(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: targetSheet.id,
+                dimension: 'ROWS',
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber,
+              },
+            },
+          },
+        ],
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(
+      formatSheetsApiError('Gagal menghapus baris dari Google Sheet', res.status, err)
+    );
+  }
+
+  clearSheetDataCache(spreadsheetId);
+  return true;
+}
+
 
