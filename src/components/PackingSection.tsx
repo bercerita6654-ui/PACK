@@ -54,6 +54,7 @@ import { soundFX } from '../utils/audio';
 import { PackingSheetHistory } from './PackingSheetHistory';
 import { AdminReportModal } from './AdminReportModal';
 import { Celebration100Modal } from './Celebration100Modal';
+import { CuteAgentAvatar } from './CuteAgentAvatar';
 import { fetchCrossReferencedNotasAndPacking } from '../services/googleWorkspace';
 import {
   isNotaDelayed,
@@ -1662,18 +1663,28 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
       <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 space-y-4">
         {/* Header & Mode Tabs */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-              <ScanBarcode className="w-5 h-5" />
-            </div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900">
-                Scan Nota (Sudah Packing)
-              </h2>
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Siap Scan
-              </span>
+          <div className="flex items-center gap-3">
+            <CuteAgentAvatar
+              expression="thumbs_up"
+              customImageUrl="https://lottie.host/997b8c04-d31e-4d35-b44e-16ba474fd715/58cq3gSepb.gif"
+              size="2xl"
+              glowColor="emerald"
+              animation="bounce"
+              bubbleText="Scan packing beres! ⚡"
+            />
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                  Scan Nota (Sudah Packing)
+                </h2>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Siap Scan
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Scan barcode no. pesanan yang telah selesai dipacking oleh tim
+              </p>
             </div>
           </div>
 

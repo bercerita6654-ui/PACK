@@ -758,7 +758,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                     : 'chilling_beanbag'
                 }
                 customImageUrl="https://lottie.host/fc20fae6-2d3f-466d-b496-982b74fcfdc6/mO5PCWv1Ii.gif"
-                size="lg"
+                size="2xl"
                 glowColor={
                   sheetProgressPercent === 100
                     ? 'emerald'
@@ -1134,7 +1134,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                           : 'duck_waiting'
                       }
                       customImageUrl="https://lottie.host/d53b8503-430e-4dfb-83fe-736070530dfc/kutvK01eXj.gif"
-                      size="xl"
+                      size="2xl"
                       glowColor={
                         sheetProgressPercent === 100
                           ? 'emerald'
@@ -1224,7 +1224,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 <CuteAgentAvatar
                   expression="duck_waiting"
                   customImageUrl="https://lottie.host/955aab33-0717-417f-ad20-a1da80d19926/h0i3WRkdr3.gif"
-                  size="md"
+                  size="xl"
                   glowColor="amber"
                   animation="float"
                   bubbleText="Antri pack!"
@@ -1276,7 +1276,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 <CuteAgentAvatar
                   expression={sheetProgressPercent === 100 ? 'cool_sunglasses' : 'thumbs_up'}
                   customImageUrl="https://lottie.host/997b8c04-d31e-4d35-b44e-16ba474fd715/58cq3gSepb.gif"
-                  size="md"
+                  size="xl"
                   glowColor="emerald"
                   animation="bounce"
                   bubbleText={sheetProgressPercent === 100 ? 'Selesai 100%!' : 'Beres!'}
@@ -1338,7 +1338,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 <CuteAgentAvatar
                   expression="panic_sweat"
                   customImageUrl="https://lottie.host/c3e31776-7594-4701-8908-a31746b8afd0/NsmGxQZWva.gif"
-                  size="md"
+                  size="xl"
                   glowColor="rose"
                   animation={sheetAllOverdueCount > 0 ? 'jitter' : 'none'}
                   bubbleText={sheetAllOverdueCount > 0 ? 'Waduh telat!' : 'Aman!'}
@@ -1419,7 +1419,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 <CuteAgentAvatar
                   expression="eating_popcorn"
                   customImageUrl="https://lottie.host/e65ba651-145f-48ae-8eb7-efd7abc5fe8a/jVxDDtDFCi.gif"
-                  size="md"
+                  size="xl"
                   glowColor="indigo"
                   animation="pulse"
                   bubbleText="Pantau data~"

@@ -63,6 +63,7 @@ import {
   ProcessedNotaSheetHistory,
   SheetProcessedNotaRow,
 } from './ProcessedNotaSheetHistory';
+import { CuteAgentAvatar } from './CuteAgentAvatar';
 
 interface ProcessedNotaSectionProps {
   notas: ProcessedNota[];
@@ -1712,38 +1713,66 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
 
       {/* Scanner Control Box */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-        {/* Scanner Mode Tabs & AutoFocus Switch */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
+        {/* Scanner Header & Mascot */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <CuteAgentAvatar
+              expression="duck_waiting"
+              customImageUrl="https://lottie.host/955aab33-0717-417f-ad20-a1da80d19926/h0i3WRkdr3.gif"
+              size="2xl"
+              glowColor="amber"
+              animation="float"
+              bubbleText="Scan nota admin! 🐥"
+            />
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                  Scan Nota (Belum Packing)
+                </h2>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-amber-50 text-amber-800 px-2.5 py-0.5 rounded-full border border-amber-200 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Input Admin
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Scan barcode no. pesanan baru yang diterima admin untuk diproses
+              </p>
+            </div>
+          </div>
+
+          {/* Mode Tabs */}
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl w-full sm:w-auto shrink-0 border border-slate-200/80">
             <button
               type="button"
               id="tab-scan-single-nota"
               onClick={() => setScanMode('single')}
-              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 scanMode === 'single'
                   ? 'bg-white text-amber-800 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <ScanBarcode className="w-4 h-4 text-amber-600" />
-              <span>Scan Nota (Cepat)</span>
+              <span>Scan Satuan</span>
             </button>
             <button
               type="button"
               id="tab-scan-batch-nota"
               onClick={() => setScanMode('batch_paste')}
-              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 scanMode === 'batch_paste'
                   ? 'bg-white text-amber-800 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Layers className="w-4 h-4 text-amber-600" />
-              <span>Batch Paste (Banyak Nota)</span>
+              <span>Tempel Massal</span>
             </button>
           </div>
+        </div>
 
-          {scanMode === 'single' && (
+        {scanMode === 'single' && (
+          <div className="flex items-center justify-end">
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -1753,8 +1782,8 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
               />
               <span>Auto-Focus Scanner Fisik</span>
             </label>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Single Scan Mode */}
         {scanMode === 'single' ? (
