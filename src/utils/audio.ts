@@ -199,6 +199,91 @@ class SoundFX {
       console.warn('Speech synthesis error:', e);
     }
   }
+
+  // Triumphant fanfare + cute cheerful voice "Yeah, berhasil!" when 100% packing is reached
+  playCelebration100() {
+    if (!this.enabled) return;
+
+    const ctx = this.getContext();
+    if (ctx) {
+      try {
+        const now = ctx.currentTime;
+        // 4-note victory arpeggio: C5 -> E5 -> G5 -> C6 with warm harmonics
+        const notes = [
+          { f: 523.25, start: 0.0, dur: 0.12 },
+          { f: 659.25, start: 0.11, dur: 0.12 },
+          { f: 783.99, start: 0.22, dur: 0.15 },
+          { f: 1046.5, start: 0.36, dur: 0.55 },
+          { f: 1318.51, start: 0.42, dur: 0.48 },
+        ];
+
+        notes.forEach(({ f, start, dur }) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(f, now + start);
+
+          // Slight sparkle vibrato on high note
+          if (f > 1000) {
+            osc.frequency.exponentialRampToValueAtTime(f * 1.02, now + start + dur * 0.5);
+          }
+
+          gain.gain.setValueAtTime(0.35, now + start);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.start(now + start);
+          osc.stop(now + start + dur + 0.05);
+        });
+      } catch {
+        // Ignore audio context error
+      }
+    }
+
+    // Cute voice speech synthesis "Yeah! Berhasil!"
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+
+        const phrase = 'Yeah! Berhasil! Seratus persen sudah packing!';
+        const utterance = new SpeechSynthesisUtterance(phrase);
+        utterance.lang = 'id-ID';
+        utterance.volume = 1.0;
+        utterance.rate = 1.1; // Cheerful pace
+        utterance.pitch = 1.45; // Cute high cartoon-like pitch
+
+        const voices = window.speechSynthesis.getVoices();
+        if (voices && voices.length > 0) {
+          const idVoice = voices.find(
+            (v) =>
+              v.lang === 'id-ID' ||
+              v.lang.startsWith('id') ||
+              v.name.toLowerCase().includes('indonesia') ||
+              v.name.toLowerCase().includes('id_id')
+          );
+          if (idVoice) {
+            utterance.voice = idVoice;
+          }
+        }
+
+        // Slight 250ms delay to let the initial fanfare chord sparkle before voice peaks
+        setTimeout(() => {
+          try {
+            if (this.enabled) {
+              window.speechSynthesis.speak(utterance);
+            }
+          } catch (e) {
+            console.warn('Speech synthesis error:', e);
+          }
+        }, 250);
+      } catch (e) {
+        console.warn('Celebration voice error:', e);
+      }
+    }
+  }
 }
 
 /**

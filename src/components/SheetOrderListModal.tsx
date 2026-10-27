@@ -281,7 +281,11 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       if (onMarkOrdersAsPacked) {
         await onMarkOrdersAsPacked(itemsToPack);
       }
-      soundFX.playBatchSuccess();
+      if (itemsToPack.length >= visibleUnpackedOrders.length) {
+        soundFX.playCelebration100();
+      } else {
+        soundFX.playBatchSuccess();
+      }
       showToast(`✓ ${itemsToPack.length} No. Pesanan berhasil jadi Terpacking & langsung tersimpan ke Google Sheets!`, 'success');
       setSelectedOrders(new Set());
     } catch (err: any) {
@@ -401,7 +405,7 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       if (onMarkOrdersAsPacked) {
         await onMarkOrdersAsPacked(itemsToPack);
       }
-      soundFX.playBatchSuccess();
+      soundFX.playCelebration100();
       showToast(`✓ Semua ${itemsToPack.length} No. Pesanan berhasil jadi Terpacking & langsung tersimpan ke Google Sheets!`, 'success');
       setSelectedOrders(new Set());
     } catch (err: any) {

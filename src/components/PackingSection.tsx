@@ -37,6 +37,7 @@ import {
   ExternalLink,
   Camera,
   Smartphone,
+  PartyPopper,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CameraBarcodeScannerModal } from './CameraBarcodeScannerModal';
@@ -52,6 +53,7 @@ import { detectPlatform, getPlatformColor } from '../utils/platformDetector';
 import { soundFX } from '../utils/audio';
 import { PackingSheetHistory } from './PackingSheetHistory';
 import { AdminReportModal } from './AdminReportModal';
+import { Celebration100Modal } from './Celebration100Modal';
 import { fetchCrossReferencedNotasAndPacking } from '../services/googleWorkspace';
 import {
   isNotaDelayed,
@@ -1157,6 +1159,19 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     };
   }, [todayStatsSource, sheetRows.length, sheetTodayStats, localTodayStats, sheetResolvedTab, sheetResolvedPackingTab, timeframeLabel]);
 
+  const [isCelebrationOpen, setIsCelebrationOpen] = useState<boolean>(false);
+  const prevPercentTodayRef = useRef<number>(0);
+
+  // Auto-trigger 100% celebration animation & cheerful voice "Yeah berhasil!" when packing hits 100%
+  useEffect(() => {
+    if (activePerformanceStats.totalToday > 0 && activePerformanceStats.percentToday === 100) {
+      if (prevPercentTodayRef.current < 100) {
+        setIsCelebrationOpen(true);
+      }
+    }
+    prevPercentTodayRef.current = activePerformanceStats.percentToday;
+  }, [activePerformanceStats.percentToday, activePerformanceStats.totalToday]);
+
   return (
     <div className="space-y-6">
       {/* Ringkasan Metrik Performa Packing Hari Ini (Nota Masuk vs Berhasil Di-Packing) */}
@@ -1331,29 +1346,42 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
                   <Percent className="w-3.5 h-3.5 text-emerald-400" />
                   Tingkat Keberhasilan Packing
                 </span>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
-                    activePerformanceStats.percentToday === 100
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                      activePerformanceStats.percentToday === 100
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : activePerformanceStats.percentToday >= 80
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : activePerformanceStats.percentToday >= 50
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : activePerformanceStats.totalToday === 0
+                        ? 'bg-slate-700/60 text-slate-400 border-slate-600'
+                        : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    }`}
+                  >
+                    {activePerformanceStats.percentToday === 100
+                      ? '✓ 100% Selesai'
                       : activePerformanceStats.percentToday >= 80
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      ? '⚡ Performa Tinggi'
                       : activePerformanceStats.percentToday >= 50
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      ? '⏳ Sedang Berjalan'
                       : activePerformanceStats.totalToday === 0
-                      ? 'bg-slate-700/60 text-slate-400 border-slate-600'
-                      : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                  }`}
-                >
-                  {activePerformanceStats.percentToday === 100
-                    ? '✓ 100% Selesai'
-                    : activePerformanceStats.percentToday >= 80
-                    ? '⚡ Performa Tinggi'
-                    : activePerformanceStats.percentToday >= 50
-                    ? '⏳ Sedang Berjalan'
-                    : activePerformanceStats.totalToday === 0
-                    ? 'Belum Ada Pesanan'
-                    : '⚠️ Perlu Dikejar'}
-                </span>
+                      ? 'Belum Ada Pesanan'
+                      : '⚠️ Perlu Dikejar'}
+                  </span>
+                  {activePerformanceStats.percentToday === 100 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCelebrationOpen(true)}
+                      className="px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-emerald-400 to-amber-300 text-slate-950 flex items-center gap-1 shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer animate-bounce"
+                      title="Putar animasi konfeti perayaan dan suara lucu 'Yeah Berhasil'!"
+                    >
+                      <PartyPopper className="w-3 h-3" />
+                      <span>Rayakan! 🎉</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-baseline gap-2 mt-3">
@@ -2665,6 +2693,14 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
           showToast(`Report status packing (admin - ${admin}) berhasil disalin!`, 'success');
           setTimeout(() => setCopiedReport(false), 2500);
         }}
+      />
+
+      {/* Pop-up Animasi Happy 100% Selesai & Suara Lucu */}
+      <Celebration100Modal
+        isOpen={isCelebrationOpen}
+        onClose={() => setIsCelebrationOpen(false)}
+        totalPacked={activePerformanceStats.packedToday}
+        timeframeLabel={timeframeLabel}
       />
     </div>
   );

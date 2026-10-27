@@ -22,6 +22,7 @@ import {
   ScanBarcode,
   FileText,
   Sparkles,
+  PartyPopper,
 } from 'lucide-react';
 import {
   PlatformType,
@@ -52,6 +53,7 @@ import { getPlatformColor } from '../utils/platformDetector';
 import { SheetOrderListModal } from './SheetOrderListModal';
 import { AdminReportModal } from './AdminReportModal';
 import { CuteAgentAvatar } from './CuteAgentAvatar';
+import { Celebration100Modal } from './Celebration100Modal';
 
 interface BerandaSectionProps {
   accessToken: string | null;
@@ -125,6 +127,8 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
   const [copiedReport, setCopiedReport] = useState<boolean>(false);
   const [activeModalType, setActiveModalType] = useState<'all' | 'pending' | 'overdue' | 'packed' | null>(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
+  const [isCelebrationOpen, setIsCelebrationOpen] = useState<boolean>(false);
+  const prevProgressRef = useRef<number>(0);
   const [adminName, setAdminName] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('packing_report_admin_name') || '';
@@ -672,6 +676,16 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
   const sheetProgressPercent =
     sheetTotalCount > 0 ? Math.round((sheetPackedCount / sheetTotalCount) * 100) : 0;
 
+  // Auto-trigger 100% celebration animation & cheerful voice "Yeah berhasil!" when 100% is reached
+  useEffect(() => {
+    if (sheetTotalCount > 0 && sheetProgressPercent === 100) {
+      if (prevProgressRef.current < 100) {
+        setIsCelebrationOpen(true);
+      }
+    }
+    prevProgressRef.current = sheetProgressPercent;
+  }, [sheetProgressPercent, sheetTotalCount]);
+
   // Formatted string of latest packed timestamp
   const lastPackedTimeStr = useMemo(() => {
     const packedList = dashboardFilteredSheetRows.filter(
@@ -725,21 +739,12 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
       {/* ========================================================================= */}
       <div
         id="dashboard-sheet-summary-top"
-        className="bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 rounded-3xl p-5 sm:p-7 text-white shadow-[0_25px_60px_-15px_rgba(2,6,23,0.85)] border border-slate-700/80 ring-1 ring-white/10 relative overflow-hidden backdrop-blur-xl"
+        className="bg-white rounded-3xl p-5 sm:p-7 text-slate-800 shadow-sm border border-slate-200 relative overflow-hidden"
       >
-        {/* Sleek top neon accent strip */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-500 shadow-[0_0_12px_rgba(16,185,129,0.5)] z-20" />
-
-        {/* Ambient atmospheric background glows */}
-        <div className="absolute -top-24 -right-24 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-20 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute top-1/2 left-1/3 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute inset-0 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none opacity-40" />
-
         {/* Dashboard Header Bar */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800/90 relative z-10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-200 relative z-10">
           <div className="flex items-start sm:items-center gap-3.5">
-            <div className="relative p-2 bg-gradient-to-br from-emerald-500/25 via-emerald-500/15 to-teal-500/10 border border-emerald-400/40 text-emerald-400 rounded-2xl shrink-0 shadow-[0_0_20px_rgba(16,185,129,0.25)] flex items-center justify-center">
+            <div className="relative p-2.5 sm:p-3 bg-emerald-50 border border-emerald-300 text-emerald-600 rounded-2xl shrink-0 shadow-xs flex items-center justify-center">
               <CuteAgentAvatar
                 expression={
                   sheetProgressPercent === 100
@@ -752,7 +757,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                     ? 'duck_waiting'
                     : 'chilling_beanbag'
                 }
-                size="sm"
+                size="lg"
                 glowColor={
                   sheetProgressPercent === 100
                     ? 'emerald'
@@ -772,24 +777,24 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                     : 'Siap Pantau!'
                 }
               />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping opacity-75" />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping opacity-75" />
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                   <span>Status Paket</span>
-                  <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 shadow-xs">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
                     Live Google Sheets
                   </span>
                 </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 shadow-xs">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs">
                   Tab: {sheetResolvedTab}
                 </span>
                 {sheetLastFetchedAt && (
-                  <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-slate-500" />
+                  <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-slate-400" />
                     <span>Diperbarui {sheetLastFetchedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                   </span>
                 )}
@@ -805,17 +810,17 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               id="btn-beranda-refresh-data"
               onClick={handleManualRefresh}
               disabled={sheetLoading}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all bg-slate-800/90 hover:bg-slate-700/90 active:bg-slate-900 border border-slate-600/70 hover:border-emerald-400/60 text-slate-200 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] backdrop-blur-sm group"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-300 hover:border-emerald-500 text-slate-800 hover:text-slate-950 disabled:opacity-50 cursor-pointer shadow-xs group"
               title="Segarkan data terbaru dari Google Sheets (Otomatis setiap 5 menit)"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 transition-transform ${sheetLoading ? 'animate-spin' : 'group-hover:rotate-180 duration-500'}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 transition-transform ${sheetLoading ? 'animate-spin' : 'group-hover:rotate-180 duration-500'}`} />
               <span>{sheetLoading ? 'Menyinkron...' : 'Segarkan Google Sheets'}</span>
               {accessToken && (
                 <span
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-xs"
                   title="Otomatis diperbarui setiap 5 menit"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
                   <span>{formatCountdown(countdown)}</span>
                 </span>
               )}
@@ -826,16 +831,16 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               type="button"
               id="btn-beranda-select-admin"
               onClick={() => setIsReportModalOpen(true)}
-              className={`flex items-center bg-slate-800/90 hover:bg-slate-800 border ${
-                adminName ? 'border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.2)] ring-1 ring-emerald-500/30' : 'border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/20'
+              className={`flex items-center bg-slate-100 hover:bg-slate-200 border ${
+                adminName ? 'border-emerald-400/80 shadow-xs ring-1 ring-emerald-400/30' : 'border-amber-400/80 shadow-xs ring-1 ring-amber-400/20'
               } rounded-xl px-3 py-2 transition-all cursor-pointer group`}
               title="Klik untuk memilih atau mengubah nama admin (Bobby, Winda, Putri, Mishel)"
             >
-              <User className={`w-3.5 h-3.5 shrink-0 mr-1.5 ${adminName ? 'text-emerald-400' : 'text-amber-400 animate-pulse'}`} />
-              <span className="text-[11px] font-bold text-slate-400 mr-1.5 whitespace-nowrap">Admin:</span>
+              <User className={`w-3.5 h-3.5 shrink-0 mr-1.5 ${adminName ? 'text-emerald-600' : 'text-amber-500 animate-pulse'}`} />
+              <span className="text-[11px] font-bold text-slate-600 mr-1.5 whitespace-nowrap">Admin:</span>
               <span
                 className={`text-xs font-black ${
-                  adminName ? 'text-emerald-300' : 'text-amber-400 group-hover:text-amber-300'
+                  adminName ? 'text-emerald-700' : 'text-amber-600 group-hover:text-amber-700'
                 }`}
               >
                 {adminName || 'Pilih Admin (Wajib)'}
@@ -870,10 +875,10 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
         </div>
 
         {/* Timeframe Filter Bar (Default: Harian / Hari Ini, with Mingguan, Bulanan, Semua Data) */}
-        <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4 relative z-10">
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-950/80 p-1.5 rounded-2xl border border-slate-800/90 shadow-inner backdrop-blur-md">
-            <span className="text-[11px] font-bold text-slate-400 px-2 py-1 flex items-center gap-1.5">
-              <Filter className="w-3 h-3 text-emerald-400" />
+        <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/90 pb-4 relative z-10">
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+            <span className="text-[11px] font-bold text-slate-600 px-2 py-1 flex items-center gap-1.5">
+              <Filter className="w-3 h-3 text-emerald-600" />
               <span>Periode:</span>
             </span>
             <button
@@ -883,7 +888,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 sheetTimeframe === 'today'
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black shadow-[0_0_15px_rgba(16,185,129,0.4)] ring-1 ring-emerald-300'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent hover:border-slate-700/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-slate-300'
               }`}
             >
               <Calendar className="w-3.5 h-3.5" />
@@ -892,7 +897,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                   sheetTimeframe === 'today'
                     ? 'bg-slate-950/40 text-slate-950'
-                    : 'bg-slate-800 text-slate-300'
+                    : 'bg-white text-slate-700 border border-slate-200 shadow-2xs'
                 }`}
               >
                 {sheetTodayTotal}
@@ -905,7 +910,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 sheetTimeframe === 'yesterday'
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black shadow-[0_0_15px_rgba(16,185,129,0.4)] ring-1 ring-emerald-300'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent hover:border-slate-700/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-slate-300'
               }`}
             >
               <Calendar className="w-3.5 h-3.5" />
@@ -914,7 +919,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                   sheetTimeframe === 'yesterday'
                     ? 'bg-slate-950/40 text-slate-950'
-                    : 'bg-slate-800 text-slate-300'
+                    : 'bg-white text-slate-700 border border-slate-200 shadow-2xs'
                 }`}
               >
                 {sheetYesterdayTotal}
@@ -927,7 +932,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 sheetTimeframe === 'week'
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black shadow-[0_0_15px_rgba(16,185,129,0.4)] ring-1 ring-emerald-300'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent hover:border-slate-700/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-slate-300'
               }`}
             >
               <Calendar className="w-3.5 h-3.5" />
@@ -936,7 +941,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                   sheetTimeframe === 'week'
                     ? 'bg-slate-950/40 text-slate-950'
-                    : 'bg-slate-800 text-slate-300'
+                    : 'bg-white text-slate-700 border border-slate-200 shadow-2xs'
                 }`}
               >
                 {sheetWeekTotal}
@@ -949,7 +954,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 sheetTimeframe === 'month'
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black shadow-[0_0_15px_rgba(16,185,129,0.4)] ring-1 ring-emerald-300'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent hover:border-slate-700/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-slate-300'
               }`}
             >
               <Calendar className="w-3.5 h-3.5" />
@@ -958,7 +963,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                   sheetTimeframe === 'month'
                     ? 'bg-slate-950/40 text-slate-950'
-                    : 'bg-slate-800 text-slate-300'
+                    : 'bg-white text-slate-700 border border-slate-200 shadow-2xs'
                 }`}
               >
                 {sheetMonthTotal}
@@ -971,7 +976,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 sheetTimeframe === 'all'
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black shadow-[0_0_15px_rgba(16,185,129,0.4)] ring-1 ring-emerald-300'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent hover:border-slate-700/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-slate-300'
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
@@ -980,7 +985,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                   sheetTimeframe === 'all'
                     ? 'bg-slate-950/40 text-slate-950'
-                    : 'bg-slate-800 text-slate-300'
+                    : 'bg-white text-slate-700 border border-slate-200 shadow-2xs'
                 }`}
               >
                 {sheetRows.length}
@@ -992,24 +997,24 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
         {/* Hero Performance Card & Breakdown */}
         <div
           id="packing-performance-summary-top"
-          className="mt-5 bg-gradient-to-b from-slate-900/90 via-slate-900/75 to-slate-950/90 rounded-2xl p-4 sm:p-6 border border-slate-700/80 shadow-[0_10px_30px_rgba(0,0,0,0.35)] relative overflow-hidden backdrop-blur-md space-y-4 z-10"
+          className="mt-5 bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm space-y-4"
         >
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-gradient-to-br from-emerald-500/25 to-teal-500/10 text-emerald-400 border border-emerald-500/30 rounded-xl shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+              <div className="p-2.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-xl shrink-0 shadow-xs">
                 <TrendingUp className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="font-bold text-base sm:text-lg text-white tracking-tight flex items-center gap-2">
+                  <h4 className="font-bold text-base sm:text-lg text-slate-900 tracking-tight flex items-center gap-2">
                     <span>Performa Packing {sheetTimeframeLabel}</span>
-                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <Sparkles className="w-4 h-4 text-emerald-500" />
                   </h4>
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs">
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs">
                     {sheetProgressPercent}% Selesai
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5">
                   Tingkat keberhasilan pemrosesan pesanan dari Google Sheets
                 </p>
               </div>
@@ -1020,72 +1025,81 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             {/* Hero Performance Card (Full Width) */}
             <div
               id="card-metric-hero-performance"
-              className="w-full bg-gradient-to-br from-slate-950/95 via-slate-900/90 to-indigo-950/35 border border-slate-700/80 rounded-2xl p-4 sm:p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_10px_35px_rgba(0,0,0,0.45)] relative overflow-hidden"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs relative overflow-hidden"
             >
-              {/* Subtle ambient light mesh */}
-              <div className="absolute -top-12 -right-12 w-56 h-56 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute -bottom-12 -left-12 w-56 h-56 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
-
               <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
                 {/* Left side: Metrics & Stats */}
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                      <Percent className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                      <Percent className="w-3.5 h-3.5 text-emerald-600" />
                       Tingkat Keberhasilan Packing
                     </span>
-                    <span
-                      className={`px-3 py-1 rounded-full text-[11px] font-black border shadow-xs transition-all ${
-                        sheetProgressPercent === 100
-                          ? 'bg-gradient-to-r from-emerald-500/25 to-teal-500/25 text-emerald-200 border-emerald-400/60 shadow-[0_0_16px_rgba(16,185,129,0.35)]'
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-3 py-1 rounded-full text-[11px] font-black border shadow-xs transition-all ${
+                          sheetProgressPercent === 100
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : sheetProgressPercent >= 80
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : sheetProgressPercent >= 50
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            : sheetTotalCount === 0
+                            ? 'bg-slate-100 text-slate-500 border-slate-200'
+                            : 'bg-rose-50 text-rose-800 border-rose-200'
+                        }`}
+                      >
+                        {sheetProgressPercent === 100
+                          ? '✓ 100% Selesai Sempurna'
                           : sheetProgressPercent >= 80
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+                          ? '⚡ Performa Sangat Baik'
                           : sheetProgressPercent >= 50
-                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                          ? '⏳ Sedang Berjalan'
                           : sheetTotalCount === 0
-                          ? 'bg-slate-800/60 text-slate-400 border-slate-700'
-                          : 'bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.2)]'
-                      }`}
-                    >
-                      {sheetProgressPercent === 100
-                        ? '✓ 100% Selesai Sempurna'
-                        : sheetProgressPercent >= 80
-                        ? '⚡ Performa Sangat Baik'
-                        : sheetProgressPercent >= 50
-                        ? '⏳ Sedang Berjalan'
-                        : sheetTotalCount === 0
-                        ? 'Belum Ada Pesanan'
-                        : '⚠️ Perlu Dikejar'}
-                    </span>
+                          ? 'Belum Ada Pesanan'
+                          : '⚠️ Perlu Dikejar'}
+                      </span>
+                      {sheetProgressPercent === 100 && (
+                        <button
+                          type="button"
+                          onClick={() => setIsCelebrationOpen(true)}
+                          className="px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-500 hover:bg-emerald-600 text-white shadow-xs flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer animate-bounce"
+                          title="Putar animasi konfeti perayaan dan suara lucu 'Yeah Berhasil'!"
+                        >
+                          <PartyPopper className="w-3.5 h-3.5" />
+                          <span>Rayakan! 🎉</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-baseline gap-3 mt-3">
-                    <span className="text-4xl sm:text-6xl font-black bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 bg-clip-text text-transparent font-mono tracking-tight tabular-nums drop-shadow-[0_2px_14px_rgba(52,211,153,0.4)]">
+                    <span className="text-4xl sm:text-6xl font-black text-emerald-600 font-mono tracking-tight tabular-nums">
                       {sheetLoading ? '...' : `${sheetProgressPercent}%`}
                     </span>
-                    <span className="text-xs sm:text-sm font-bold text-slate-200">
+                    <span className="text-xs sm:text-sm font-bold text-slate-700">
                       Berhasil Di-Packing
                     </span>
                     {lastPackedTimeStr && (
-                      <span className="ml-auto text-xs text-slate-300 font-medium bg-slate-900/90 px-2.5 py-1 rounded-xl border border-slate-700/80 flex items-center gap-1.5 shadow-xs">
-                        <Clock className="w-3 h-3 text-emerald-400" />
-                        <span>Terakhir: <strong className="text-emerald-300 font-mono">{lastPackedTimeStr}</strong></span>
+                      <span className="ml-auto text-xs text-slate-600 font-medium bg-white px-2.5 py-1 rounded-xl border border-slate-200 flex items-center gap-1.5 shadow-2xs">
+                        <Clock className="w-3 h-3 text-emerald-600" />
+                        <span>Terakhir: <strong className="text-emerald-700 font-mono">{lastPackedTimeStr}</strong></span>
                       </span>
                     )}
                   </div>
 
-                  <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">
                     {sheetTotalCount > 0 ? (
                       <>
-                        <strong className="text-emerald-300 font-bold">
+                        <strong className="text-emerald-700 font-bold">
                           {sheetPackedCount} sudah packing
                         </strong>{' '}
                         dibandingkan{' '}
-                        <strong className="text-amber-300 font-bold">
+                        <strong className="text-amber-700 font-bold">
                           {sheetPendingCount} belum packing
                         </strong>{' '}
                         (Total{' '}
-                        <strong className="text-white font-bold">
+                        <strong className="text-slate-900 font-bold">
                           {sheetTotalCount} pesanan
                         </strong>).
                       </>
@@ -1095,16 +1109,16 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                   </p>
 
                   {/* Dynamic comparison formula feedback */}
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-mono">
-                    <span className="text-slate-400 font-sans font-semibold">Rumus:</span>
-                    <span className="bg-slate-900/90 px-2.5 py-1 rounded-xl border border-slate-700/80 text-emerald-300 shadow-2xs">
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 font-mono">
+                    <span className="text-slate-600 font-sans font-semibold">Rumus:</span>
+                    <span className="bg-white px-2.5 py-1 rounded-xl border border-slate-200 text-slate-700 shadow-2xs font-bold">
                       ({sheetPackedCount} Sudah ÷ {sheetTotalCount} Total) × 100% = {sheetProgressPercent}%
                     </span>
                   </div>
                 </div>
 
                 {/* Right side: Reactive Agent Mascot Companion */}
-                <div className="flex sm:self-center md:self-auto items-center gap-3 p-3 sm:p-4 rounded-2xl bg-gradient-to-br from-slate-900/90 to-slate-950/90 border border-slate-700/70 shadow-lg relative group shrink-0">
+                <div className="flex sm:self-center md:self-auto items-center gap-4 p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-sm relative group shrink-0">
                   <div className="relative">
                     <CuteAgentAvatar
                       expression={
@@ -1118,7 +1132,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                           ? 'panic_sweat'
                           : 'duck_waiting'
                       }
-                      size="lg"
+                      size="xl"
                       glowColor={
                         sheetProgressPercent === 100
                           ? 'emerald'
@@ -1144,10 +1158,10 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                   </div>
                   <div className="flex flex-col">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-                      <span className="text-xs font-black text-white">Agent Packing</span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+                      <span className="text-xs font-black text-slate-900">Agent Packing</span>
                     </div>
-                    <span className="text-[11px] text-slate-400 font-medium">
+                    <span className="text-[11px] text-slate-500 font-medium">
                       {sheetProgressPercent === 100
                         ? 'Semua pesanan selesai!'
                         : sheetProgressPercent >= 80
@@ -1163,21 +1177,21 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               </div>
 
               {/* Visual Progress Bar */}
-              <div className="mt-5 pt-4 border-t border-slate-800/80">
-                <div className="w-full bg-slate-950 rounded-full h-4 p-0.5 overflow-hidden border border-slate-700/80 shadow-inner relative">
+              <div className="mt-5 pt-4 border-t border-slate-200">
+                <div className="w-full bg-slate-200 rounded-full h-3.5 overflow-hidden border border-slate-300">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-700 ease-out shadow-[0_0_14px_rgba(52,211,153,0.7)]"
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-500 ease-out"
                     style={{ width: `${sheetProgressPercent}%` }}
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs font-semibold mt-2.5">
-                  <span className="text-emerald-300 flex items-center gap-1.5 bg-emerald-950/70 px-3 py-1 rounded-xl border border-emerald-500/40 shadow-xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] inline-block" />
-                    Sudah: <strong className="font-mono">{sheetPackedCount}</strong> ({sheetProgressPercent}%)
+                  <span className="text-emerald-800 flex items-center gap-1.5 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />
+                    Sudah: <strong className="font-mono text-emerald-900">{sheetPackedCount}</strong> ({sheetProgressPercent}%)
                   </span>
-                  <span className="text-amber-300 flex items-center gap-1.5 bg-amber-950/70 px-3 py-1 rounded-xl border border-amber-500/40 shadow-xs">
-                    <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)] inline-block" />
-                    Belum: <strong className="font-mono">{sheetPendingCount}</strong> ({sheetTotalCount > 0 ? 100 - sheetProgressPercent : 0}%)
+                  <span className="text-amber-800 flex items-center gap-1.5 bg-amber-50 px-3 py-1 rounded-xl border border-amber-200 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-amber-600 inline-block" />
+                    Belum: <strong className="font-mono text-amber-900">{sheetPendingCount}</strong> ({sheetTotalCount > 0 ? 100 - sheetProgressPercent : 0}%)
                   </span>
                 </div>
               </div>
@@ -1187,35 +1201,32 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
         {/* Dashboard 4 Core Stat Cards with Trendy Colors & Expressive Cute Agents */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-5 relative z-10">
-          {/* Card 1: BELUM PACKING (Cyber Amber & Yellow) */}
+          {/* Card 1: BELUM PACKING */}
           <div
             id="card-sheet-pending"
             onClick={() => handleCardClick('pending')}
-            className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1.5 ${
+            className={`p-4 sm:p-5 pt-5 sm:pt-6 rounded-2xl border-2 cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1 bg-white ${
               sheetStatusFilter === 'pending'
-                ? 'bg-gradient-to-br from-amber-950/90 via-amber-900/40 to-slate-900 border-amber-400 ring-2 ring-amber-400/60 shadow-[0_12px_30px_rgba(245,158,11,0.35)]'
-                : 'bg-gradient-to-br from-amber-950/60 via-amber-950/30 to-slate-900/90 hover:from-amber-950/80 border-amber-500/40 hover:border-amber-400 shadow-md hover:shadow-[0_12px_28px_rgba(245,158,11,0.25)]'
+                ? 'border-amber-500 ring-2 ring-amber-200 shadow-md'
+                : 'border-slate-200 hover:border-amber-400 shadow-sm hover:shadow-md'
             }`}
             title="Klik untuk membuka pop-up daftar No. Pesanan belum packing"
           >
-            {/* Top highlight bar */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-300 shadow-[0_0_10px_rgba(245,158,11,0.6)]" />
-
             {/* Header: Title + Cute Agent Mascot */}
             <div className="flex items-center justify-between mb-2">
-              <span className="text-amber-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-amber-800 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
                 Belum Packing
               </span>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <CuteAgentAvatar
                   expression="duck_waiting"
-                  size="sm"
+                  size="md"
                   glowColor="amber"
                   animation="float"
                   bubbleText="Antri pack!"
                 />
-                <span className="px-2 py-0.5 bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-full text-[10px] font-black shadow-xs">
+                <span className="px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-[10px] font-bold shadow-2xs">
                   {sheetTotalCount > 0 ? `${Math.round((sheetPendingCount / sheetTotalCount) * 100)}%` : '0%'}
                 </span>
               </div>
@@ -1223,53 +1234,50 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
             {/* Metric Value */}
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-3xl sm:text-4xl font-mono font-black bg-gradient-to-r from-amber-300 via-amber-200 to-yellow-300 bg-clip-text text-transparent tracking-tight tabular-nums drop-shadow-[0_2px_10px_rgba(245,158,11,0.35)]">
+              <span className="text-3xl sm:text-4xl font-mono font-black text-amber-600 tracking-tight tabular-nums">
                 {sheetLoading ? '...' : sheetPendingCount}
               </span>
-              <span className="text-xs text-amber-200/90 font-semibold">Nota</span>
+              <span className="text-xs text-slate-500 font-semibold">Nota</span>
             </div>
 
             {/* Card Footer */}
-            <p className="text-[11px] text-amber-300/90 mt-2.5 pt-2 border-t border-amber-500/25 flex items-center justify-between">
+            <p className="text-[11px] text-slate-600 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
               <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                 <span>Menunggu dipacking</span>
               </span>
-              <span className="text-[10px] underline font-bold group-hover:translate-x-1 transition-transform text-amber-200">
+              <span className="text-[10px] underline font-bold group-hover:translate-x-1 transition-transform text-amber-700">
                 Daftar Pesanan →
               </span>
             </p>
           </div>
 
-          {/* Card 2: SUDAH PACKING (Cyber Mint & Emerald) */}
+          {/* Card 2: SUDAH PACKING */}
           <div
             id="card-sheet-packed"
             onClick={() => handleCardClick('packed')}
-            className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1.5 ${
+            className={`p-4 sm:p-5 pt-5 sm:pt-6 rounded-2xl border-2 cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1 bg-white ${
               sheetStatusFilter === 'packed'
-                ? 'bg-gradient-to-br from-emerald-950/90 via-emerald-900/40 to-slate-900 border-emerald-400 ring-2 ring-emerald-400/60 shadow-[0_12px_30px_rgba(16,185,129,0.35)]'
-                : 'bg-gradient-to-br from-emerald-950/60 via-emerald-950/30 to-slate-900/90 hover:from-emerald-950/80 border-emerald-500/40 hover:border-emerald-400 shadow-md hover:shadow-[0_12px_28px_rgba(16,185,129,0.25)]'
+                ? 'border-emerald-500 ring-2 ring-emerald-200 shadow-md'
+                : 'border-slate-200 hover:border-emerald-400 shadow-sm hover:shadow-md'
             }`}
             title="Klik untuk membuka pop-up daftar No. Pesanan sudah packing"
           >
-            {/* Top highlight bar */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-300 shadow-[0_0_10px_rgba(16,185,129,0.6)]" />
-
             {/* Header: Title + Cute Agent Mascot */}
             <div className="flex items-center justify-between mb-2">
-              <span className="text-emerald-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-emerald-800 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                 Sudah Packing
               </span>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <CuteAgentAvatar
                   expression={sheetProgressPercent === 100 ? 'cool_sunglasses' : 'thumbs_up'}
-                  size="sm"
+                  size="md"
                   glowColor="emerald"
                   animation="bounce"
                   bubbleText={sheetProgressPercent === 100 ? 'Selesai 100%!' : 'Beres!'}
                 />
-                <span className="px-2 py-0.5 bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 rounded-full text-[10px] font-black shadow-xs">
+                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-[10px] font-bold shadow-2xs">
                   {sheetProgressPercent}%
                 </span>
               </div>
@@ -1277,64 +1285,61 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
             {/* Metric Value */}
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-3xl sm:text-4xl font-mono font-black bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 bg-clip-text text-transparent tracking-tight tabular-nums drop-shadow-[0_2px_10px_rgba(16,185,129,0.35)]">
+              <span className="text-3xl sm:text-4xl font-mono font-black text-emerald-600 tracking-tight tabular-nums">
                 {sheetLoading ? '...' : sheetPackedCount}
               </span>
-              <span className="text-xs text-emerald-200/90 font-semibold">Nota</span>
+              <span className="text-xs text-slate-500 font-semibold">Nota</span>
             </div>
 
             {/* Mini Progress Bar */}
-            <div className="w-full bg-emerald-950/80 rounded-full h-1.5 mt-2.5 overflow-hidden border border-emerald-700/60">
+            <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden border border-slate-200">
               <div
-                className="bg-gradient-to-r from-emerald-400 to-teal-300 h-1.5 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(52,211,153,0.7)]"
+                className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
                 style={{ width: `${sheetProgressPercent}%` }}
               />
             </div>
 
             {/* Card Footer */}
-            <p className="text-[11px] text-emerald-300/90 mt-2 pt-1 border-t border-emerald-500/25 flex items-center justify-between">
+            <p className="text-[11px] text-slate-600 mt-2 pt-1 border-t border-slate-100 flex items-center justify-between">
               <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 <span>Telah selesai dipacking</span>
               </span>
-              <span className="text-[10px] underline font-bold group-hover:translate-x-1 transition-transform text-emerald-200">
+              <span className="text-[10px] underline font-bold group-hover:translate-x-1 transition-transform text-emerald-700">
                 Daftar Pesanan →
               </span>
             </p>
           </div>
 
-          {/* Card 3: TERTUNDA > THRESHOLD (Cyber Crimson & Rose) */}
+          {/* Card 3: TERTUNDA > THRESHOLD */}
           <div
             id="card-sheet-overdue"
             onClick={() => handleCardClick('overdue')}
-            className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1.5 ${
+            className={`p-4 sm:p-5 pt-5 sm:pt-6 rounded-2xl border-2 cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1 bg-white ${
               sheetStatusFilter === 'overdue'
-                ? 'bg-gradient-to-br from-rose-950/95 via-rose-900/40 to-slate-900 border-rose-400 ring-2 ring-rose-400/60 shadow-[0_12px_30px_rgba(244,63,94,0.35)]'
+                ? 'border-rose-500 ring-2 ring-rose-200 shadow-md'
                 : sheetAllOverdueCount > 0
-                ? 'bg-gradient-to-br from-rose-950/75 via-rose-950/35 to-slate-900/90 hover:from-rose-950/90 border-rose-500/60 hover:border-rose-400 shadow-md hover:shadow-[0_12px_28px_rgba(244,63,94,0.3)]'
-                : 'bg-gradient-to-br from-slate-900/80 via-slate-900/50 to-slate-950/90 border-slate-700/80 hover:border-slate-600 shadow-md'
+                ? 'border-rose-300 hover:border-rose-400 shadow-sm hover:shadow-md'
+                : 'border-slate-200 hover:border-slate-300 shadow-sm'
             }`}
             title="Klik untuk membuka pop-up daftar No. Pesanan tertunda"
           >
-            {/* Top highlight bar */}
-            <div className={`absolute top-0 left-0 right-0 h-1 ${sheetAllOverdueCount > 0 ? 'bg-gradient-to-r from-rose-500 via-red-400 to-pink-500 shadow-[0_0_10px_rgba(244,63,94,0.7)]' : 'bg-slate-700'}`} />
-
             {/* Header: Title + Cute Agent Mascot */}
             <div className="flex items-center justify-between mb-2">
-              <span className="text-rose-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <AlertTriangle className={`w-3.5 h-3.5 ${sheetAllOverdueCount > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-400'}`} />
+              <span className="text-rose-800 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <AlertTriangle className={`w-3.5 h-3.5 ${sheetAllOverdueCount > 0 ? 'text-rose-600 animate-pulse' : 'text-slate-400'}`} />
                 Tertunda &gt;{formatThresholdLabel(delayThreshold)}
               </span>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <CuteAgentAvatar
                   expression="panic_sweat"
-                  size="sm"
+                  size="md"
                   glowColor="rose"
                   animation={sheetAllOverdueCount > 0 ? 'jitter' : 'none'}
                   bubbleText={sheetAllOverdueCount > 0 ? 'Waduh telat!' : 'Aman!'}
                 />
                 {sheetAllOverdueCount > 0 && (
-                  <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.8)]">
+                  <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black animate-pulse shadow-xs">
                     Cek!
                   </span>
                 )}
@@ -1343,16 +1348,14 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
             {/* Metric Value */}
             <div className="flex items-baseline gap-2 mt-1">
-              <span className={`text-3xl sm:text-4xl font-mono font-black tracking-tight tabular-nums drop-shadow-[0_2px_10px_rgba(244,63,94,0.35)] ${
-                sheetAllOverdueCount > 0
-                  ? 'bg-gradient-to-r from-rose-400 via-red-300 to-pink-300 bg-clip-text text-transparent'
-                  : 'text-slate-300'
+              <span className={`text-3xl sm:text-4xl font-mono font-black tracking-tight tabular-nums ${
+                sheetAllOverdueCount > 0 ? 'text-rose-600' : 'text-slate-700'
               }`}>
                 {sheetLoading ? '...' : sheetAllOverdueCount}
               </span>
-              <span className="text-xs text-slate-300 font-medium">Nota</span>
+              <span className="text-xs text-slate-500 font-semibold">Nota</span>
               {sheetTimeframe !== 'all' && (
-                <span className="text-[10px] font-bold text-rose-300 ml-auto bg-rose-950/80 px-2 py-0.5 rounded-lg border border-rose-500/40">
+                <span className="text-[10px] font-bold text-rose-800 ml-auto bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
                   {sheetTimeframe === 'today'
                     ? 'Hari ini'
                     : sheetTimeframe === 'yesterday'
@@ -1366,40 +1369,37 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             </div>
 
             {/* Tanda Informasi Pendingan Semua Data */}
-            <div className="mt-2.5 pt-2 border-t border-rose-500/25 flex flex-col gap-0.5">
-              <div className="flex items-center justify-between text-[11px] text-rose-200">
+            <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-col gap-0.5">
+              <div className="flex items-center justify-between text-[11px] text-slate-700">
                 <span className="flex items-center gap-1 font-bold">
-                  <Info className="w-3 h-3 text-rose-400 shrink-0" />
+                  <Info className="w-3 h-3 text-rose-600 shrink-0" />
                   <span>Akumulasi Pendingan</span>
                 </span>
-                <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform text-rose-300">
+                <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform text-rose-700">
                   Daftar Pesanan →
                 </span>
               </div>
-              <p className="text-[10px] text-rose-300/80 leading-tight">
+              <p className="text-[10px] text-slate-500 leading-tight">
                 Klik untuk melihat rincian No. Pesanan yang belum dipacking.
               </p>
             </div>
           </div>
 
-          {/* Card 4: TOTAL NOTA SESUAI PERIODE (Cyber Indigo & Electric Violet) */}
+          {/* Card 4: TOTAL NOTA SESUAI PERIODE */}
           <div
             id="card-sheet-total"
             onClick={() => handleCardClick('all')}
-            className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1.5 ${
+            className={`p-4 sm:p-5 pt-5 sm:pt-6 rounded-2xl border-2 cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1 bg-white ${
               sheetStatusFilter === 'all'
-                ? 'bg-gradient-to-br from-indigo-950/90 via-indigo-900/40 to-slate-900 border-indigo-400 ring-2 ring-indigo-400/60 shadow-[0_12px_30px_rgba(99,102,241,0.35)]'
-                : 'bg-gradient-to-br from-indigo-950/60 via-indigo-950/30 to-slate-900/90 hover:from-indigo-950/80 border-indigo-500/40 hover:border-indigo-400 shadow-md hover:shadow-[0_12px_28px_rgba(99,102,241,0.25)]'
+                ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md'
+                : 'border-slate-200 hover:border-indigo-400 shadow-sm hover:shadow-md'
             }`}
             title="Klik untuk membuka pop-up daftar seluruh No. Pesanan pada periode ini"
           >
-            {/* Top highlight bar */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-400 via-sky-300 to-purple-400 shadow-[0_0_10px_rgba(99,102,241,0.6)]" />
-
             {/* Header: Title + Cute Agent Mascot */}
             <div className="flex items-center justify-between mb-2">
-              <span className="text-indigo-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-indigo-800 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-indigo-600" />
                 {sheetTimeframe === 'today'
                   ? 'Total Harian'
                   : sheetTimeframe === 'yesterday'
@@ -1410,15 +1410,15 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                   ? 'Total Bulanan'
                   : 'Total di Sheet'}
               </span>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <CuteAgentAvatar
                   expression="eating_popcorn"
-                  size="sm"
+                  size="md"
                   glowColor="indigo"
                   animation="pulse"
                   bubbleText="Pantau data~"
                 />
-                <span className="px-2 py-0.5 bg-slate-800/90 text-indigo-200 border border-indigo-400/30 rounded-full text-[10px] font-bold shadow-2xs">
+                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-full text-[10px] font-bold shadow-2xs">
                   {sheetTimeframe === 'today'
                     ? 'Hari Ini'
                     : sheetTimeframe === 'yesterday'
@@ -1434,23 +1434,23 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
             {/* Metric Value */}
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-3xl sm:text-4xl font-mono font-black bg-gradient-to-r from-white via-indigo-100 to-slate-200 bg-clip-text text-transparent tracking-tight tabular-nums drop-shadow-[0_2px_10px_rgba(255,255,255,0.25)]">
+              <span className="text-3xl sm:text-4xl font-mono font-black text-slate-900 tracking-tight tabular-nums">
                 {sheetLoading ? '...' : sheetTotalCount}
               </span>
-              <span className="text-xs text-slate-300 font-semibold">Nota</span>
+              <span className="text-xs text-slate-500 font-semibold">Nota</span>
             </div>
 
             {/* Card Footer: Shopee vs Tokopedia */}
-            <p className="text-[11px] text-slate-300 mt-2.5 pt-2 border-t border-indigo-500/25 flex items-center justify-between">
-              <span className="text-indigo-200/95 font-medium flex items-center gap-1.5">
-                <span className="px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30 text-[10px]">
-                  Shopee: <strong className="text-white font-mono">{sheetShopeeCount}</strong>
+            <p className="text-[11px] text-slate-600 mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-slate-700 font-medium flex items-center gap-1.5">
+                <span className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-200 text-[10px] font-bold">
+                  Shopee: <strong className="text-orange-950 font-mono">{sheetShopeeCount}</strong>
                 </span>
-                <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px]">
-                  Tokped: <strong className="text-white font-mono">{sheetTokpedCount}</strong>
+                <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
+                  Tokped: <strong className="text-emerald-950 font-mono">{sheetTokpedCount}</strong>
                 </span>
               </span>
-              <span className="text-[10px] underline font-bold group-hover:translate-x-1 transition-transform text-indigo-300">
+              <span className="text-[10px] underline font-bold group-hover:translate-x-1 transition-transform text-indigo-700">
                 Daftar Pesanan →
               </span>
             </p>
@@ -1459,12 +1459,12 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
         {/* Connection status banner if not connected */}
         {!accessToken && (
-          <div className="mt-5 p-4 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-xs text-slate-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10 shadow-lg">
+          <div className="mt-5 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10 shadow-xs">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 shrink-0 shadow-2xs">
+              <div className="p-2 bg-emerald-100 border border-emerald-200 rounded-xl text-emerald-700 shrink-0 shadow-2xs">
                 <FileSpreadsheet className="w-4 h-4" />
               </div>
-              <span className="text-slate-300">
+              <span className="text-slate-600 font-medium">
                 Google Sheets belum terhubung. Hubungkan akun Google Anda untuk sinkronisasi data status paket secara langsung.
               </span>
             </div>
@@ -1472,7 +1472,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               type="button"
               id="btn-beranda-connect-google"
               onClick={onLoginGoogle}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs shrink-0 transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-1.5"
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs shrink-0 transition-all shadow-[0_2px_10px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-1.5"
             >
               <RefreshCw className="w-3.5 h-3.5 text-slate-950" />
               <span>Hubungkan Akun Google</span>
@@ -1482,16 +1482,16 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
 
         {/* Error notification if any */}
         {sheetError && (
-          <div className="mt-5 p-4 bg-rose-950/70 border border-rose-700/80 rounded-2xl text-xs text-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 relative z-10 shadow-lg">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          <div className="mt-5 p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 relative z-10 shadow-xs">
+            <div className="flex items-center gap-2 font-medium">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{sheetError}</span>
             </div>
             <button
               type="button"
               id="btn-beranda-reconnect-error"
               onClick={onLoginGoogle}
-              className="px-3 py-1.5 bg-white text-rose-950 hover:bg-rose-50 font-bold rounded-lg text-xs shrink-0 transition-colors shadow-sm cursor-pointer"
+              className="px-3 py-1.5 bg-rose-600 text-white hover:bg-rose-700 font-bold rounded-lg text-xs shrink-0 transition-colors shadow-xs cursor-pointer"
             >
               Perbarui Sesi Google
             </button>
@@ -1779,6 +1779,14 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
           },
         }}
         onSuccessCopy={handleCopySuccess}
+      />
+
+      {/* Pop-up Animasi Happy 100% Selesai & Suara Lucu */}
+      <Celebration100Modal
+        isOpen={isCelebrationOpen}
+        onClose={() => setIsCelebrationOpen(false)}
+        totalPacked={sheetPackedCount}
+        timeframeLabel={sheetTimeframeLabel}
       />
     </section>
   );
