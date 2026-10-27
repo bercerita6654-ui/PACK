@@ -757,6 +757,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                     ? 'duck_waiting'
                     : 'chilling_beanbag'
                 }
+                customImageUrl="https://lottie.host/fc20fae6-2d3f-466d-b496-982b74fcfdc6/mO5PCWv1Ii.gif"
                 size="lg"
                 glowColor={
                   sheetProgressPercent === 100
@@ -1132,6 +1133,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                           ? 'panic_sweat'
                           : 'duck_waiting'
                       }
+                      customImageUrl="https://lottie.host/d53b8503-430e-4dfb-83fe-736070530dfc/kutvK01eXj.gif"
                       size="xl"
                       glowColor={
                         sheetProgressPercent === 100
@@ -1221,6 +1223,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               <div className="flex items-center gap-2">
                 <CuteAgentAvatar
                   expression="duck_waiting"
+                  customImageUrl="https://lottie.host/955aab33-0717-417f-ad20-a1da80d19926/h0i3WRkdr3.gif"
                   size="md"
                   glowColor="amber"
                   animation="float"
@@ -1272,6 +1275,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               <div className="flex items-center gap-2">
                 <CuteAgentAvatar
                   expression={sheetProgressPercent === 100 ? 'cool_sunglasses' : 'thumbs_up'}
+                  customImageUrl="https://lottie.host/997b8c04-d31e-4d35-b44e-16ba474fd715/58cq3gSepb.gif"
                   size="md"
                   glowColor="emerald"
                   animation="bounce"
@@ -1333,6 +1337,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               <div className="flex items-center gap-2">
                 <CuteAgentAvatar
                   expression="panic_sweat"
+                  customImageUrl="https://lottie.host/c3e31776-7594-4701-8908-a31746b8afd0/NsmGxQZWva.gif"
                   size="md"
                   glowColor="rose"
                   animation={sheetAllOverdueCount > 0 ? 'jitter' : 'none'}
@@ -1413,6 +1418,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
               <div className="flex items-center gap-2">
                 <CuteAgentAvatar
                   expression="eating_popcorn"
+                  customImageUrl="https://lottie.host/e65ba651-145f-48ae-8eb7-efd7abc5fe8a/jVxDDtDFCi.gif"
                   size="md"
                   glowColor="indigo"
                   animation="pulse"

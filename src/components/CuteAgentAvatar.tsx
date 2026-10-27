@@ -15,6 +15,7 @@ export type AgentExpression =
 
 interface CuteAgentAvatarProps {
   expression: AgentExpression;
+  customImageUrl?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
   bubbleText?: string;
   className?: string;
@@ -57,6 +58,7 @@ const GLOW_CLASSES = {
 
 export const CuteAgentAvatar: React.FC<CuteAgentAvatarProps> = ({
   expression,
+  customImageUrl,
   size = 'md',
   bubbleText,
   className = '',
@@ -64,7 +66,7 @@ export const CuteAgentAvatar: React.FC<CuteAgentAvatarProps> = ({
   animate = true,
   animation,
 }) => {
-  const imgSrc = AGENT_IMAGES[expression] || AGENT_IMAGES.cool;
+  const imgSrc = customImageUrl || AGENT_IMAGES[expression] || AGENT_IMAGES.cool;
 
   // Custom motion animation based on explicit prop or expression
   const getAnimationVariants = () => {
