@@ -391,23 +391,31 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Listen to Google Firebase Auth state
+  // Listen to Google Firebase Auth state & restore session on initial load
   useEffect(() => {
+    let isMounted = true;
     const unsubscribe = initAuth(
       (currentUser, token) => {
+        if (!isMounted) return;
         setUser(currentUser);
         if (token) {
           setAccessToken(token);
+        } else {
+          setAccessToken(null);
         }
         setIsAuthChecking(false);
       },
       () => {
+        if (!isMounted) return;
         setUser(null);
         setAccessToken(null);
         setIsAuthChecking(false);
       }
     );
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Save activeSpreadsheet to localStorage
@@ -529,10 +537,12 @@ export default function App() {
     showToast('Berhasil keluar dari akun Google.', 'info');
   };
 
-  // Handle Token Expiration
+  // Handle Token Expiration - Buka pop-up pembaruan sesi agar pengguna dapat memperbarui dengan 1 klik
   const handleTokenExpired = () => {
     invalidateStoredToken();
     setAccessToken(null);
+    showToast('Sesi Google kedaluwarsa. Silakan klik "Perbarui Sesi Google" untuk melanjutkan sinkronisasi.', 'warning');
+    setIsGoogleSessionModalOpen(true);
   };
 
   // Handler to mark orders as packed directly from modals / lists and sync to Google Sheet
@@ -902,14 +912,18 @@ export default function App() {
       return pUpper === upper || (norm && pNorm === norm);
     });
 
+    // Mencegah pendoblean: jika nota/resi sudah pernah dipacking, jangan tambahkan lagi ke list scan nota
+    if (matchingPacked) {
+      return { success: false, isDuplicate: true };
+    }
+
     const newNota: ProcessedNota = {
       id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       orderNumber: upper,
       platform,
       timestamp: timeStr,
       date: appData.date,
-      isPacked: Boolean(matchingPacked),
-      packedAt: matchingPacked ? matchingPacked.timestamp : undefined,
+      isPacked: false,
       notes,
       createdAt: Date.now(),
     };
@@ -1008,10 +1022,14 @@ export default function App() {
       second: '2-digit',
     });
 
+    const targetNota = processedNotas.find((n) => n.id === id);
+    if (!targetNota) return;
+
+    const nextState = !targetNota.isPacked;
+
     setProcessedNotas((prev) =>
       prev.map((nota) => {
         if (nota.id === id) {
-          const nextState = !nota.isPacked;
           return {
             ...nota,
             isPacked: nextState,
@@ -1021,6 +1039,50 @@ export default function App() {
         return nota;
       })
     );
+
+    if (nextState) {
+      soundFX.playSuccess();
+      showToast(
+        `✓ No. Nota ${targetNota.orderNumber} berhasil jadi Terpacking & otomatis disembunyikan dari list scan antrean (mencegah duplikat)!`,
+        'success'
+      );
+
+      // Automatically add to packedOrders so Packing Scanner recognizes it immediately
+      setPackedOrders((prevPacked) => {
+        const upper = targetNota.orderNumber.toUpperCase();
+        const exists = prevPacked.some((p) => p.orderNumber.toUpperCase() === upper);
+        if (!exists) {
+          return [
+            {
+              id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              orderNumber: targetNota.orderNumber,
+              platform: targetNota.platform,
+              timestamp: timeStr,
+              date: targetNota.date,
+              createdAt: Date.now(),
+            },
+            ...prevPacked,
+          ];
+        }
+        return prevPacked;
+      });
+
+      // Synchronize with Google Sheet if connected
+      handleMarkOrdersAsPacked([
+        {
+          orderNumber: targetNota.orderNumber,
+          platform: targetNota.platform,
+          adminDate: targetNota.date,
+        },
+      ]).catch((err) => {
+        console.warn('Sync marked order to sheet notice:', err);
+      });
+    } else {
+      showToast(`Nota ${targetNota.orderNumber} dikembalikan ke status Belum Packing.`, 'info');
+      setPackedOrders((prev) =>
+        prev.filter((p) => p.orderNumber.toUpperCase() !== targetNota.orderNumber.toUpperCase())
+      );
+    }
   };
 
   // Check date on interval/focus to ensure day rollover is handled
@@ -1734,6 +1796,8 @@ export default function App() {
           onGoogleSignIn={handleGoogleSignInDirect}
           isLoading={isSigningInGoogle}
           onContinueAsGuest={() => setIsGuestMode(true)}
+          user={user}
+          cachedProfile={getCachedUserProfile()}
         />
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </>

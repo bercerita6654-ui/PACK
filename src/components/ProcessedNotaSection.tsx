@@ -131,7 +131,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
   const [scanInput, setScanInput] = useState<string>('');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [autoFocus, setAutoFocus] = useState<boolean>(true);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
   const [platformFilter, setPlatformFilter] = useState<'Semua' | PlatformType>('Semua');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedNotaIds, setSelectedNotaIds] = useState<Set<string>>(new Set());
@@ -981,6 +981,32 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
       return;
     }
 
+    // Cek apakah nomor resi/nota ini sudah terpacking sebelumnya agar tidak ada pendoblean
+    const codeNorm = normalizeOrderNumber(code);
+    const existingPacked =
+      effectiveNotas.find(
+        (n) => (n.orderNumber.toUpperCase() === code || (Boolean(codeNorm) && normalizeOrderNumber(n.orderNumber) === codeNorm)) && n.isPacked
+      ) ||
+      packedOrders.find(
+        (p) => p.orderNumber.toUpperCase() === code || (Boolean(codeNorm) && normalizeOrderNumber(p.orderNumber) === codeNorm)
+      ) ||
+      sheetRows.find(
+        (r) => r.isPacked && (r.orderNumber.toUpperCase() === code || (Boolean(codeNorm) && normalizeOrderNumber(r.orderNumber) === codeNorm))
+      );
+
+    if (existingPacked) {
+      soundFX.playDuplicate();
+      showToast(
+        `[SUDAH TERPACKING] Nota / Resi ${code} sudah berstatus Terpacking! Tidak dimunculkan lagi di list scan agar tidak ada pendoblean.`,
+        'warning'
+      );
+      setScanInput('');
+      if (autoFocus && inputRef.current) {
+        inputRef.current.focus();
+      }
+      return;
+    }
+
     const platform =
       selectedPlatform !== 'auto' ? selectedPlatform : detectPlatform(code);
 
@@ -1016,10 +1042,21 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
       .filter((l) => l.length > 0);
 
     const existingUpper = new Set(notas.map((n) => n.orderNumber.toUpperCase()));
+    const packedUpperSet = new Set<string>();
+    packedOrders.forEach((p) => packedUpperSet.add(p.orderNumber.toUpperCase()));
+    sheetRows.forEach((r) => {
+      if (r.isPacked) packedUpperSet.add(r.orderNumber.toUpperCase());
+    });
+    effectiveNotas.forEach((n) => {
+      if (n.isPacked) packedUpperSet.add(n.orderNumber.toUpperCase());
+    });
+
     const seenInBatch = new Set<string>();
 
     return lines.map((code) => {
+      const codeNorm = normalizeOrderNumber(code);
       const isExistingDup = existingUpper.has(code);
+      const isAlreadyPacked = packedUpperSet.has(code);
       const isBatchDup = seenInBatch.has(code);
       seenInBatch.add(code);
 
@@ -1029,10 +1066,11 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
       return {
         orderNumber: code,
         platform,
-        isDuplicate: isExistingDup || isBatchDup,
+        isDuplicate: isExistingDup || isBatchDup || isAlreadyPacked,
+        isAlreadyPacked,
       };
     });
-  }, [batchText, batchPlatform, notas]);
+  }, [batchText, batchPlatform, notas, packedOrders, sheetRows, effectiveNotas]);
 
   const batchValidCount = parsedBatchItems.filter((item) => !item.isDuplicate).length;
   const batchDuplicateCount = parsedBatchItems.length - batchValidCount;
@@ -1922,19 +1960,9 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
           <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl overflow-x-auto">
             <button
               type="button"
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
-                statusFilter === 'all'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Semua ({totalNotas})
-            </button>
-            <button
-              type="button"
+              id="btn-filter-tab-pending"
               onClick={() => setStatusFilter('pending')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
                 statusFilter === 'pending'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'text-amber-800 hover:bg-amber-100/70'
@@ -1947,7 +1975,7 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
               type="button"
               id="btn-filter-tab-overdue"
               onClick={() => setStatusFilter('overdue')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
                 statusFilter === 'overdue'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : delayedCount > 0
@@ -1966,15 +1994,28 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
             </button>
             <button
               type="button"
+              id="btn-filter-tab-packed"
               onClick={() => setStatusFilter('packed')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
                 statusFilter === 'packed'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-emerald-800 hover:bg-emerald-100/70'
               }`}
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Sudah Selesai ({packedCount})</span>
+              <span>Sudah Terpacking ({packedCount})</span>
+            </button>
+            <button
+              type="button"
+              id="btn-filter-tab-all"
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                statusFilter === 'all'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Semua ({totalNotas})
             </button>
           </div>
 
@@ -2249,21 +2290,27 @@ export const ProcessedNotaSection: React.FC<ProcessedNotaSectionProps> = ({
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
-                            onClick={() => onTogglePackedStatus(nota.id)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                            onClick={() => {
+                              onTogglePackedStatus(nota.id);
+                              if (statusFilter !== 'packed') {
+                                setStatusFilter('pending');
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95 ${
                               nota.isPacked
-                                ? 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                                ? 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'
                                 : isOverdue
-                                ? 'border-rose-300 bg-rose-100/70 text-rose-900 hover:bg-rose-200'
-                                : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                ? 'border-rose-400 bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
+                                : 'border-emerald-500 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
                             }`}
                             title={
                               nota.isPacked
-                                ? 'Ubah ke status Belum Packing'
-                                : 'Tandai manual sudah selesai packing'
+                                ? 'Ubah kembali ke status Belum Packing'
+                                : 'Jadikan Terpacking & otomatis sembunyikan dari daftar scan antrean agar tidak dobel'
                             }
                           >
-                            {nota.isPacked ? 'Tandai Belum' : 'Tandai Selesai'}
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{nota.isPacked ? 'Batal Terpacking' : 'Jadikan Terpacking'}</span>
                           </button>
                           <button
                             type="button"

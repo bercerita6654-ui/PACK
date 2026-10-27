@@ -22,24 +22,27 @@ export const TOKEN_STORAGE_KEY = 'packTrack_google_access_token';
 export const TOKEN_EXPIRY_KEY = 'packTrack_google_token_expiry';
 export const USER_PROFILE_KEY = 'packTrack_cached_user_profile';
 
-// Immediately purge legacy stored tokens from localStorage to prevent stale 401 unauthenticated errors
-if (typeof window !== 'undefined') {
-  try {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    localStorage.removeItem(TOKEN_EXPIRY_KEY);
-  } catch (e) {
-    // Ignore
-  }
-}
-
 let isSigningIn = false;
-// In-memory token cache: Google OAuth access tokens are kept purely in memory per security guidelines
 let cachedAccessToken: string | null = null;
 let cachedTokenExpiry: number = 0;
 
 // Helper: Check if stored token is still within validity window
 export const isStoredTokenValid = (): boolean => {
-  return Boolean(cachedAccessToken && Date.now() < cachedTokenExpiry);
+  if (cachedAccessToken && Date.now() < cachedTokenExpiry) {
+    return true;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+      const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+      if (token && expiry) {
+        return Date.now() < parseInt(expiry, 10);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  return false;
 };
 
 // Helper: Invalidate and clear stored access token
@@ -51,24 +54,51 @@ export const invalidateStoredToken = () => {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
       localStorage.removeItem(TOKEN_EXPIRY_KEY);
     } catch (e) {
-      console.warn('Could not remove legacy storage items:', e);
+      console.warn('Could not remove storage items:', e);
     }
   }
 };
 
-// Helper: Get cached token (in-memory)
+// Helper: Get cached token (from memory or valid persistent storage)
 export const getStoredAccessToken = (): string | null => {
   if (cachedAccessToken && Date.now() < cachedTokenExpiry) {
     return cachedAccessToken;
   }
+  if (typeof window !== 'undefined') {
+    try {
+      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+      const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+      if (token && expiry) {
+        const expiryMs = parseInt(expiry, 10);
+        if (Date.now() < expiryMs) {
+          cachedAccessToken = token;
+          cachedTokenExpiry = expiryMs;
+          return token;
+        } else {
+          // Token expired
+          invalidateStoredToken();
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
   return null;
 };
 
-// Helper: Save token to in-memory cache with validity window (default: ~55 minutes)
+// Helper: Save token to in-memory & persistent storage with validity window (default: ~55 minutes)
 export const setStoredAccessToken = (token: string | null, expiresInSeconds = 3300) => {
   if (token) {
     cachedAccessToken = token;
     cachedTokenExpiry = Date.now() + expiresInSeconds * 1000;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(TOKEN_STORAGE_KEY, token);
+        localStorage.setItem(TOKEN_EXPIRY_KEY, cachedTokenExpiry.toString());
+      } catch (e) {
+        console.warn('Could not save token to localStorage:', e);
+      }
+    }
   } else {
     invalidateStoredToken();
   }
@@ -157,10 +187,9 @@ export const initAuth = (
         onAuthSuccess(user, token);
       }
     } else {
-      // User is explicitly logged out
+      // User session unauthenticated (don't clear cached profile so user can 1-click login back)
       cachedAccessToken = null;
       setStoredAccessToken(null);
-      cacheUserProfile(null);
       if (onAuthFailure) {
         onAuthFailure();
       }
@@ -192,7 +221,16 @@ export const googleSignIn = async (
     cacheUserProfile(result.user);
 
     return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'auth/popup-blocked') {
+      console.warn('Popup login Google terblokir oleh browser. Harap izinkan popup atau klik tombol login.');
+      const blockedErr = new Error('Popup login Google diblokir oleh browser. Silakan klik tombol "Masuk dengan Akun Google".');
+      (blockedErr as any).code = 'auth/popup-blocked';
+      throw blockedErr;
+    }
+    if (error?.code === 'auth/popup-closed-by-user') {
+      throw error;
+    }
     console.error('Sign in error:', error);
     throw error;
   } finally {
@@ -219,7 +257,16 @@ export const refreshGoogleToken = async (): Promise<string> => {
     cacheUserProfile(result.user);
 
     return credential.accessToken;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'auth/popup-blocked') {
+      console.warn('Popup perbarui token Google terblokir oleh browser (memerlukan klik langsung dari pengguna).');
+      const blockedErr = new Error('Popup perbarui sesi Google diblokir browser. Silakan klik tombol "Perbarui Sesi Google".');
+      (blockedErr as any).code = 'auth/popup-blocked';
+      throw blockedErr;
+    }
+    if (error?.code === 'auth/popup-closed-by-user') {
+      throw error;
+    }
     console.error('Refresh token error:', error);
     throw error;
   } finally {

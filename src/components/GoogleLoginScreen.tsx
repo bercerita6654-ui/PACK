@@ -11,17 +11,28 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
+import { CachedGoogleProfile } from '../services/googleAuth';
+import { User } from 'firebase/auth';
+
 interface GoogleLoginScreenProps {
   onGoogleSignIn: () => void;
   isLoading: boolean;
   onContinueAsGuest?: () => void;
+  user?: User | null;
+  cachedProfile?: CachedGoogleProfile | null;
 }
 
 export const GoogleLoginScreen: React.FC<GoogleLoginScreenProps> = ({
   onGoogleSignIn,
   isLoading,
   onContinueAsGuest,
+  user,
+  cachedProfile,
 }) => {
+  const activeEmail = user?.email || cachedProfile?.email;
+  const activeName = user?.displayName || cachedProfile?.displayName;
+  const activePhoto = user?.photoURL || cachedProfile?.photoURL;
+  const isReturningUser = Boolean(activeEmail);
   return (
     <div
       id="screen-google-login"
@@ -73,20 +84,55 @@ export const GoogleLoginScreen: React.FC<GoogleLoginScreenProps> = ({
           <div className="flex items-center justify-between gap-2 mb-6">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-400/30">
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Sistem Terintegrasi Google Sheets</span>
+              <span>{isReturningUser ? 'Sesi Tersimpan • Siap Masuk' : 'Sistem Terintegrasi Google Sheets'}</span>
             </span>
             <span className="text-[11px] font-mono text-slate-400 font-semibold bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700">
               Auto-Sync 5 Menit
             </span>
           </div>
 
+          {/* Returning User Profile Banner */}
+          {isReturningUser && (
+            <div className="mb-6 p-3.5 bg-slate-950/70 border border-emerald-500/30 rounded-2xl flex items-center justify-between gap-3 shadow-inner">
+              <div className="flex items-center gap-3 min-w-0">
+                {activePhoto ? (
+                  <img
+                    src={activePhoto}
+                    alt={activeName || activeEmail || 'User'}
+                    className="w-10 h-10 rounded-full border-2 border-emerald-400 object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-emerald-600/30 border border-emerald-400/40 text-emerald-300 flex items-center justify-center font-bold text-sm shrink-0">
+                    {(activeName || activeEmail || 'U').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                    <span>{activeName || 'Pengguna Google'}</span>
+                    <span className="text-[10px] font-mono font-semibold px-1.5 py-0.2 bg-emerald-950 text-emerald-400 border border-emerald-500/40 rounded">
+                      Tersimpan
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 truncate">{activeEmail}</div>
+                </div>
+              </div>
+              <span className="text-[10px] text-emerald-300 font-bold bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20 shrink-0">
+                1-Klik Masuk
+              </span>
+            </div>
+          )}
+
           {/* Headline */}
           <div className="space-y-2 mb-7 text-left">
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
-              Masuk untuk Memulai Pemantauan & Scanner Paket
+              {isReturningUser
+                ? 'Perbarui Sesi Google & Masuk ke Dashboard'
+                : 'Masuk untuk Memulai Pemantauan & Scanner Paket'}
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Hubungkan akun Google Anda untuk mengakses data lembar kerja <strong className="text-emerald-300">Packing Reg</strong> dan <strong className="text-teal-300">Nota Diproses Admin</strong> secara langsung dan realtime.
+              {isReturningUser
+                ? 'Klik tombol di bawah untuk memperbarui sesi Google otomatis dan melanjutkan sinkronisasi data lembar kerja.'
+                : 'Hubungkan akun Google Anda untuk mengakses data lembar kerja Packing Reg dan Nota Diproses Admin secara langsung dan realtime.'}
             </p>
           </div>
 
@@ -105,7 +151,7 @@ export const GoogleLoginScreen: React.FC<GoogleLoginScreenProps> = ({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  <span>Menghubungkan Akun Google...</span>
+                  <span>{isReturningUser ? 'Memperbarui Sesi Google...' : 'Menghubungkan Akun Google...'}</span>
                 </>
               ) : (
                 <>
@@ -116,7 +162,9 @@ export const GoogleLoginScreen: React.FC<GoogleLoginScreenProps> = ({
                     <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
                     <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                   </svg>
-                  <span>Masuk dengan Akun Google</span>
+                  <span>
+                    {isReturningUser ? `Perbarui Sesi & Masuk Otomatis` : 'Masuk dengan Akun Google'}
+                  </span>
                   <ArrowRight className="w-4 h-4 text-slate-500 group-hover:translate-x-1 group-hover:text-slate-900 transition-all ml-0.5" />
                 </>
               )}
