@@ -22,6 +22,7 @@ import { SheetProcessedNotaRow, PlatformType, ToastItem } from '../types';
 import { getPlatformColor } from '../utils/platformDetector';
 import { parseNotaDateTime, formatElapsedDuration, formatThresholdLabel, normalizeOrderNumber } from '../utils/notaDelay';
 import { soundFX } from '../utils/audio';
+import { CuteAgentAvatar } from './CuteAgentAvatar';
 
 export interface SheetOrderListModalProps {
   isOpen: boolean;
@@ -497,6 +498,9 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       icon: <Clock className="w-5 h-5 text-amber-500" />,
       headerBorder: 'border-amber-200/80',
       tagColor: 'text-amber-700 bg-amber-50 border-amber-200',
+      agentExpression: 'duck_waiting' as const,
+      agentGlow: 'amber' as const,
+      agentAnim: 'float' as const,
     },
     packed: {
       title: 'Daftar No Pesanan - Sudah Packing',
@@ -505,6 +509,9 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       icon: <CheckCircle2 className="w-5 h-5 text-emerald-500" />,
       headerBorder: 'border-emerald-200/80',
       tagColor: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+      agentExpression: 'thumbs_up' as const,
+      agentGlow: 'emerald' as const,
+      agentAnim: 'bounce' as const,
     },
     overdue: {
       title: `Daftar No Pesanan - Tertunda > ${formatThresholdLabel(delayThreshold)}`,
@@ -513,6 +520,9 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       icon: <AlertTriangle className="w-5 h-5 text-rose-500" />,
       headerBorder: 'border-rose-200/80',
       tagColor: 'text-rose-700 bg-rose-50 border-rose-200',
+      agentExpression: 'panic_sweat' as const,
+      agentGlow: 'rose' as const,
+      agentAnim: 'jitter' as const,
     },
     all: {
       title: `Daftar No Pesanan - ${timeframeLabel}`,
@@ -521,6 +531,9 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
       icon: <Layers className="w-5 h-5 text-indigo-500" />,
       headerBorder: 'border-indigo-200/80',
       tagColor: 'text-indigo-700 bg-indigo-50 border-indigo-200',
+      agentExpression: 'eating_popcorn' as const,
+      agentGlow: 'indigo' as const,
+      agentAnim: 'pulse' as const,
     },
   }[type];
 
@@ -545,8 +558,18 @@ export const SheetOrderListModal: React.FC<SheetOrderListModalProps> = ({
           {/* Header */}
           <div className={`p-4 sm:p-5 border-b ${config.headerBorder} bg-slate-50/60 flex items-start justify-between gap-3`}>
             <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-2xl bg-white shadow-2xs border border-slate-200 shrink-0">
-                {config.icon}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div className="p-2.5 rounded-2xl bg-white shadow-2xs border border-slate-200 shrink-0">
+                  {config.icon}
+                </div>
+                <div className="hidden sm:block">
+                  <CuteAgentAvatar
+                    expression={config.agentExpression}
+                    size="sm"
+                    glowColor={config.agentGlow}
+                    animation={config.agentAnim}
+                  />
+                </div>
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">

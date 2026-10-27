@@ -51,6 +51,7 @@ import {
 import { getPlatformColor } from '../utils/platformDetector';
 import { SheetOrderListModal } from './SheetOrderListModal';
 import { AdminReportModal } from './AdminReportModal';
+import { CuteAgentAvatar } from './CuteAgentAvatar';
 
 interface BerandaSectionProps {
   accessToken: string | null;
@@ -738,8 +739,39 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
         {/* Dashboard Header Bar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800/90 relative z-10">
           <div className="flex items-start sm:items-center gap-3.5">
-            <div className="relative p-3 bg-gradient-to-br from-emerald-500/25 via-emerald-500/15 to-teal-500/10 border border-emerald-400/40 text-emerald-400 rounded-2xl shrink-0 shadow-[0_0_20px_rgba(16,185,129,0.25)]">
-              <FileSpreadsheet className="w-6 h-6" />
+            <div className="relative p-2 bg-gradient-to-br from-emerald-500/25 via-emerald-500/15 to-teal-500/10 border border-emerald-400/40 text-emerald-400 rounded-2xl shrink-0 shadow-[0_0_20px_rgba(16,185,129,0.25)] flex items-center justify-center">
+              <CuteAgentAvatar
+                expression={
+                  sheetProgressPercent === 100
+                    ? 'cool'
+                    : sheetAllOverdueCount > 0 && sheetProgressPercent < 50
+                    ? 'panic_sweat'
+                    : sheetProgressPercent >= 80
+                    ? 'thumbs_up'
+                    : sheetPendingCount > 0
+                    ? 'duck_waiting'
+                    : 'chilling_beanbag'
+                }
+                size="sm"
+                glowColor={
+                  sheetProgressPercent === 100
+                    ? 'emerald'
+                    : sheetAllOverdueCount > 0 && sheetProgressPercent < 50
+                    ? 'rose'
+                    : sheetProgressPercent >= 80
+                    ? 'emerald'
+                    : 'amber'
+                }
+                bubbleText={
+                  sheetProgressPercent === 100
+                    ? 'Beres Semua!'
+                    : sheetAllOverdueCount > 0 && sheetProgressPercent < 50
+                    ? 'Ayo Kejar!'
+                    : sheetProgressPercent >= 80
+                    ? 'Mantap!'
+                    : 'Siap Pantau!'
+                }
+              />
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping opacity-75" />
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
             </div>
@@ -988,97 +1020,162 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             {/* Hero Performance Card (Full Width) */}
             <div
               id="card-metric-hero-performance"
-              className="w-full bg-slate-950/80 border border-slate-800/90 rounded-xl p-4 sm:p-6 flex flex-col justify-between shadow-inner relative overflow-hidden"
+              className="w-full bg-gradient-to-br from-slate-950/95 via-slate-900/90 to-indigo-950/35 border border-slate-700/80 rounded-2xl p-4 sm:p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08),0_10px_35px_rgba(0,0,0,0.45)] relative overflow-hidden"
             >
-              <div className="relative z-10">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Percent className="w-3.5 h-3.5 text-emerald-400" />
-                    Tingkat Keberhasilan Packing
-                  </span>
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-black border shadow-xs ${
-                      sheetProgressPercent === 100
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
-                        : sheetProgressPercent >= 80
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                        : sheetProgressPercent >= 50
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                        : sheetTotalCount === 0
-                        ? 'bg-slate-800/60 text-slate-400 border-slate-700'
-                        : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                    }`}
-                  >
-                    {sheetProgressPercent === 100
-                      ? '✓ 100% Selesai Sempurna'
-                      : sheetProgressPercent >= 80
-                      ? '⚡ Performa Sangat Baik'
-                      : sheetProgressPercent >= 50
-                      ? '⏳ Sedang Berjalan'
-                      : sheetTotalCount === 0
-                      ? 'Belum Ada Pesanan'
-                      : '⚠️ Perlu Dikejar'}
-                  </span>
-                </div>
+              {/* Subtle ambient light mesh */}
+              <div className="absolute -top-12 -right-12 w-56 h-56 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-12 -left-12 w-56 h-56 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
-                <div className="flex flex-wrap items-baseline gap-3 mt-3">
-                  <span className="text-4xl sm:text-6xl font-black bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent font-mono tracking-tight tabular-nums drop-shadow-[0_2px_12px_rgba(52,211,153,0.35)]">
-                    {sheetLoading ? '...' : `${sheetProgressPercent}%`}
-                  </span>
-                  <span className="text-xs sm:text-sm font-bold text-slate-300">
-                    Berhasil Di-Packing
-                  </span>
-                  {lastPackedTimeStr && (
-                    <span className="ml-auto text-xs text-slate-400 font-medium bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800 flex items-center gap-1.5">
-                      <Clock className="w-3 h-3 text-emerald-400" />
-                      <span>Terakhir: <strong className="text-emerald-300 font-mono">{lastPackedTimeStr}</strong></span>
+              <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+                {/* Left side: Metrics & Stats */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                      <Percent className="w-3.5 h-3.5 text-emerald-400" />
+                      Tingkat Keberhasilan Packing
                     </span>
-                  )}
+                    <span
+                      className={`px-3 py-1 rounded-full text-[11px] font-black border shadow-xs transition-all ${
+                        sheetProgressPercent === 100
+                          ? 'bg-gradient-to-r from-emerald-500/25 to-teal-500/25 text-emerald-200 border-emerald-400/60 shadow-[0_0_16px_rgba(16,185,129,0.35)]'
+                          : sheetProgressPercent >= 80
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+                          : sheetProgressPercent >= 50
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                          : sheetTotalCount === 0
+                          ? 'bg-slate-800/60 text-slate-400 border-slate-700'
+                          : 'bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.2)]'
+                      }`}
+                    >
+                      {sheetProgressPercent === 100
+                        ? '✓ 100% Selesai Sempurna'
+                        : sheetProgressPercent >= 80
+                        ? '⚡ Performa Sangat Baik'
+                        : sheetProgressPercent >= 50
+                        ? '⏳ Sedang Berjalan'
+                        : sheetTotalCount === 0
+                        ? 'Belum Ada Pesanan'
+                        : '⚠️ Perlu Dikejar'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-baseline gap-3 mt-3">
+                    <span className="text-4xl sm:text-6xl font-black bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 bg-clip-text text-transparent font-mono tracking-tight tabular-nums drop-shadow-[0_2px_14px_rgba(52,211,153,0.4)]">
+                      {sheetLoading ? '...' : `${sheetProgressPercent}%`}
+                    </span>
+                    <span className="text-xs sm:text-sm font-bold text-slate-200">
+                      Berhasil Di-Packing
+                    </span>
+                    {lastPackedTimeStr && (
+                      <span className="ml-auto text-xs text-slate-300 font-medium bg-slate-900/90 px-2.5 py-1 rounded-xl border border-slate-700/80 flex items-center gap-1.5 shadow-xs">
+                        <Clock className="w-3 h-3 text-emerald-400" />
+                        <span>Terakhir: <strong className="text-emerald-300 font-mono">{lastPackedTimeStr}</strong></span>
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                    {sheetTotalCount > 0 ? (
+                      <>
+                        <strong className="text-emerald-300 font-bold">
+                          {sheetPackedCount} sudah packing
+                        </strong>{' '}
+                        dibandingkan{' '}
+                        <strong className="text-amber-300 font-bold">
+                          {sheetPendingCount} belum packing
+                        </strong>{' '}
+                        (Total{' '}
+                        <strong className="text-white font-bold">
+                          {sheetTotalCount} pesanan
+                        </strong>).
+                      </>
+                    ) : (
+                      'Belum ada data pesanan tercatat untuk periode ini. Periksa data Google Sheet.'
+                    )}
+                  </p>
+
+                  {/* Dynamic comparison formula feedback */}
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-mono">
+                    <span className="text-slate-400 font-sans font-semibold">Rumus:</span>
+                    <span className="bg-slate-900/90 px-2.5 py-1 rounded-xl border border-slate-700/80 text-emerald-300 shadow-2xs">
+                      ({sheetPackedCount} Sudah ÷ {sheetTotalCount} Total) × 100% = {sheetProgressPercent}%
+                    </span>
+                  </div>
                 </div>
 
-                <p className="text-xs text-slate-300 mt-2">
-                  {sheetTotalCount > 0 ? (
-                    <>
-                      <strong className="text-emerald-300 font-bold">
-                        {sheetPackedCount} sudah packing
-                      </strong>{' '}
-                      dibandingkan{' '}
-                      <strong className="text-amber-300 font-bold">
-                        {sheetPendingCount} belum packing
-                      </strong>{' '}
-                      (Total{' '}
-                      <strong className="text-white font-bold">
-                        {sheetTotalCount} pesanan
-                      </strong>).
-                    </>
-                  ) : (
-                    'Belum ada data pesanan tercatat untuk periode ini. Periksa data Google Sheet.'
-                  )}
-                </p>
-
-                {/* Dynamic comparison formula feedback */}
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-mono">
-                  <span className="text-slate-500 font-sans font-semibold">Rumus:</span>
-                  <span className="bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-700/80 text-emerald-300 shadow-2xs">
-                    ({sheetPackedCount} Sudah ÷ {sheetTotalCount} Total) × 100% = {sheetProgressPercent}%
-                  </span>
+                {/* Right side: Reactive Agent Mascot Companion */}
+                <div className="flex sm:self-center md:self-auto items-center gap-3 p-3 sm:p-4 rounded-2xl bg-gradient-to-br from-slate-900/90 to-slate-950/90 border border-slate-700/70 shadow-lg relative group shrink-0">
+                  <div className="relative">
+                    <CuteAgentAvatar
+                      expression={
+                        sheetProgressPercent === 100
+                          ? 'cool_sunglasses'
+                          : sheetProgressPercent >= 80
+                          ? 'thumbs_up'
+                          : sheetProgressPercent >= 50
+                          ? 'eating_popcorn'
+                          : sheetAllOverdueCount > 0
+                          ? 'panic_sweat'
+                          : 'duck_waiting'
+                      }
+                      size="lg"
+                      glowColor={
+                        sheetProgressPercent === 100
+                          ? 'emerald'
+                          : sheetProgressPercent >= 80
+                          ? 'emerald'
+                          : sheetProgressPercent >= 50
+                          ? 'amber'
+                          : 'rose'
+                      }
+                      animation={sheetAllOverdueCount > 0 && sheetProgressPercent < 50 ? 'jitter' : 'bounce'}
+                      bubbleText={
+                        sheetProgressPercent === 100
+                          ? '100% Beres, Juara! 😎'
+                          : sheetProgressPercent >= 80
+                          ? 'Gaspol, hampir beres! 👍'
+                          : sheetProgressPercent >= 50
+                          ? 'Lagi proses nih~ 🍿'
+                          : sheetAllOverdueCount > 0
+                          ? 'Waduh kejar packing! 💦'
+                          : 'Semangat packing! ✨'
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+                      <span className="text-xs font-black text-white">Agent Packing</span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {sheetProgressPercent === 100
+                        ? 'Semua pesanan selesai!'
+                        : sheetProgressPercent >= 80
+                        ? 'Sisa sedikit lagi!'
+                        : sheetProgressPercent >= 50
+                        ? 'Terus berprogres!'
+                        : sheetAllOverdueCount > 0
+                        ? 'Perlu diprioritaskan!'
+                        : 'Siap memantau data'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Visual Progress Bar */}
               <div className="mt-5 pt-4 border-t border-slate-800/80">
-                <div className="w-full bg-slate-900 rounded-full h-3.5 p-0.5 overflow-hidden border border-slate-700/80 shadow-inner">
+                <div className="w-full bg-slate-950 rounded-full h-4 p-0.5 overflow-hidden border border-slate-700/80 shadow-inner relative">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-700 ease-out shadow-[0_0_12px_rgba(52,211,153,0.6)]"
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-700 ease-out shadow-[0_0_14px_rgba(52,211,153,0.7)]"
                     style={{ width: `${sheetProgressPercent}%` }}
                   />
                 </div>
                 <div className="flex items-center justify-between text-xs font-semibold mt-2.5">
-                  <span className="text-emerald-300 flex items-center gap-1.5 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                  <span className="text-emerald-300 flex items-center gap-1.5 bg-emerald-950/70 px-3 py-1 rounded-xl border border-emerald-500/40 shadow-xs">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] inline-block" />
                     Sudah: <strong className="font-mono">{sheetPackedCount}</strong> ({sheetProgressPercent}%)
                   </span>
-                  <span className="text-amber-300 flex items-center gap-1.5 bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-500/30">
+                  <span className="text-amber-300 flex items-center gap-1.5 bg-amber-950/70 px-3 py-1 rounded-xl border border-amber-500/40 shadow-xs">
                     <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)] inline-block" />
                     Belum: <strong className="font-mono">{sheetPendingCount}</strong> ({sheetTotalCount > 0 ? 100 - sheetProgressPercent : 0}%)
                   </span>
@@ -1088,132 +1185,174 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
           </div>
         </div>
 
-        {/* Dashboard 4 Core Stat Cards */}
+        {/* Dashboard 4 Core Stat Cards with Trendy Colors & Expressive Cute Agents */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-5 relative z-10">
-          {/* Card 1: BELUM PACKING (Highlighted Primary Focus) */}
+          {/* Card 1: BELUM PACKING (Cyber Amber & Yellow) */}
           <div
             id="card-sheet-pending"
             onClick={() => handleCardClick('pending')}
             className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1.5 ${
               sheetStatusFilter === 'pending'
-                ? 'bg-gradient-to-br from-amber-950/90 via-amber-950/60 to-slate-900 border-amber-400 ring-2 ring-amber-400/50 shadow-xl shadow-amber-500/25'
-                : 'bg-gradient-to-br from-amber-950/50 via-amber-950/25 to-slate-900/90 hover:from-amber-950/70 border-amber-500/40 hover:border-amber-400/80 shadow-md hover:shadow-xl hover:shadow-amber-500/20'
+                ? 'bg-gradient-to-br from-amber-950/90 via-amber-900/40 to-slate-900 border-amber-400 ring-2 ring-amber-400/60 shadow-[0_12px_30px_rgba(245,158,11,0.35)]'
+                : 'bg-gradient-to-br from-amber-950/60 via-amber-950/30 to-slate-900/90 hover:from-amber-950/80 border-amber-500/40 hover:border-amber-400 shadow-md hover:shadow-[0_12px_28px_rgba(245,158,11,0.25)]'
             }`}
             title="Klik untuk membuka pop-up daftar No. Pesanan belum packing"
           >
             {/* Top highlight bar */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-300 shadow-[0_0_10px_rgba(245,158,11,0.6)]" />
 
+            {/* Header: Title + Cute Agent Mascot */}
             <div className="flex items-center justify-between mb-2">
               <span className="text-amber-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-amber-400" />
                 Belum Packing
               </span>
-              <span className="px-2 py-0.5 bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-full text-[10px] font-black shadow-xs">
-                {sheetTotalCount > 0 ? `${Math.round((sheetPendingCount / sheetTotalCount) * 100)}%` : '0%'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <CuteAgentAvatar
+                  expression="duck_waiting"
+                  size="sm"
+                  glowColor="amber"
+                  animation="float"
+                  bubbleText="Antri pack!"
+                />
+                <span className="px-2 py-0.5 bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-full text-[10px] font-black shadow-xs">
+                  {sheetTotalCount > 0 ? `${Math.round((sheetPendingCount / sheetTotalCount) * 100)}%` : '0%'}
+                </span>
+              </div>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl sm:text-4xl font-mono font-black text-amber-300 tracking-tight tabular-nums drop-shadow-[0_2px_8px_rgba(245,158,11,0.25)]">
+
+            {/* Metric Value */}
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-3xl sm:text-4xl font-mono font-black bg-gradient-to-r from-amber-300 via-amber-200 to-yellow-300 bg-clip-text text-transparent tracking-tight tabular-nums drop-shadow-[0_2px_10px_rgba(245,158,11,0.35)]">
                 {sheetLoading ? '...' : sheetPendingCount}
               </span>
-              <span className="text-xs text-amber-200/80 font-semibold">Nota</span>
+              <span className="text-xs text-amber-200/90 font-semibold">Nota</span>
             </div>
-            <p className="text-[11px] text-amber-300/80 mt-2.5 pt-2 border-t border-amber-500/20 flex items-center justify-between">
-              <span>Menunggu dipacking</span>
+
+            {/* Card Footer */}
+            <p className="text-[11px] text-amber-300/90 mt-2.5 pt-2 border-t border-amber-500/25 flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span>Menunggu dipacking</span>
+              </span>
               <span className="text-[10px] underline font-bold group-hover:translate-x-1 transition-transform text-amber-200">
-                Daftar No Pesanan →
+                Daftar Pesanan →
               </span>
             </p>
           </div>
 
-          {/* Card 2: SUDAH PACKING (Success Primary Focus) */}
+          {/* Card 2: SUDAH PACKING (Cyber Mint & Emerald) */}
           <div
             id="card-sheet-packed"
             onClick={() => handleCardClick('packed')}
             className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1.5 ${
               sheetStatusFilter === 'packed'
-                ? 'bg-gradient-to-br from-emerald-950/90 via-emerald-950/60 to-slate-900 border-emerald-400 ring-2 ring-emerald-400/50 shadow-xl shadow-emerald-500/25'
-                : 'bg-gradient-to-br from-emerald-950/50 via-emerald-950/25 to-slate-900/90 hover:from-emerald-950/70 border-emerald-500/40 hover:border-emerald-400/80 shadow-md hover:shadow-xl hover:shadow-emerald-500/20'
+                ? 'bg-gradient-to-br from-emerald-950/90 via-emerald-900/40 to-slate-900 border-emerald-400 ring-2 ring-emerald-400/60 shadow-[0_12px_30px_rgba(16,185,129,0.35)]'
+                : 'bg-gradient-to-br from-emerald-950/60 via-emerald-950/30 to-slate-900/90 hover:from-emerald-950/80 border-emerald-500/40 hover:border-emerald-400 shadow-md hover:shadow-[0_12px_28px_rgba(16,185,129,0.25)]'
             }`}
             title="Klik untuk membuka pop-up daftar No. Pesanan sudah packing"
           >
             {/* Top highlight bar */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-300 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-300 shadow-[0_0_10px_rgba(16,185,129,0.6)]" />
 
+            {/* Header: Title + Cute Agent Mascot */}
             <div className="flex items-center justify-between mb-2">
               <span className="text-emerald-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                 Sudah Packing
               </span>
-              <span className="px-2 py-0.5 bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 rounded-full text-[10px] font-black shadow-xs">
-                {sheetProgressPercent}% Selesai
-              </span>
+              <div className="flex items-center gap-1.5">
+                <CuteAgentAvatar
+                  expression={sheetProgressPercent === 100 ? 'cool_sunglasses' : 'thumbs_up'}
+                  size="sm"
+                  glowColor="emerald"
+                  animation="bounce"
+                  bubbleText={sheetProgressPercent === 100 ? 'Selesai 100%!' : 'Beres!'}
+                />
+                <span className="px-2 py-0.5 bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 rounded-full text-[10px] font-black shadow-xs">
+                  {sheetProgressPercent}%
+                </span>
+              </div>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl sm:text-4xl font-mono font-black text-emerald-300 tracking-tight tabular-nums drop-shadow-[0_2px_8px_rgba(16,185,129,0.25)]">
+
+            {/* Metric Value */}
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-3xl sm:text-4xl font-mono font-black bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 bg-clip-text text-transparent tracking-tight tabular-nums drop-shadow-[0_2px_10px_rgba(16,185,129,0.35)]">
                 {sheetLoading ? '...' : sheetPackedCount}
               </span>
-              <span className="text-xs text-emerald-200/80 font-semibold">Nota</span>
+              <span className="text-xs text-emerald-200/90 font-semibold">Nota</span>
             </div>
-            {/* Progress bar */}
-            <div className="w-full bg-emerald-950 rounded-full h-1.5 mt-2.5 overflow-hidden border border-emerald-800/60">
+
+            {/* Mini Progress Bar */}
+            <div className="w-full bg-emerald-950/80 rounded-full h-1.5 mt-2.5 overflow-hidden border border-emerald-700/60">
               <div
-                className="bg-emerald-400 h-1.5 rounded-full transition-all duration-500 shadow-sm shadow-emerald-400/50"
+                className="bg-gradient-to-r from-emerald-400 to-teal-300 h-1.5 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(52,211,153,0.7)]"
                 style={{ width: `${sheetProgressPercent}%` }}
               />
             </div>
-            <p className="text-[11px] text-emerald-300/80 mt-2 pt-1 border-t border-emerald-500/20 flex items-center justify-between">
-              <span>Telah selesai dipacking</span>
+
+            {/* Card Footer */}
+            <p className="text-[11px] text-emerald-300/90 mt-2 pt-1 border-t border-emerald-500/25 flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>Telah selesai dipacking</span>
+              </span>
               <span className="text-[10px] underline font-bold group-hover:translate-x-1 transition-transform text-emerald-200">
-                Daftar No Pesanan →
+                Daftar Pesanan →
               </span>
             </p>
           </div>
 
-          {/* Card 3: TERTUNDA > THRESHOLD (Alert Overdue from Sheet) */}
+          {/* Card 3: TERTUNDA > THRESHOLD (Cyber Crimson & Rose) */}
           <div
             id="card-sheet-overdue"
             onClick={() => handleCardClick('overdue')}
             className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1.5 ${
               sheetStatusFilter === 'overdue'
-                ? 'bg-gradient-to-br from-rose-950/95 via-rose-950/70 to-slate-900 border-rose-400 ring-2 ring-rose-400/50 shadow-xl shadow-rose-500/30'
+                ? 'bg-gradient-to-br from-rose-950/95 via-rose-900/40 to-slate-900 border-rose-400 ring-2 ring-rose-400/60 shadow-[0_12px_30px_rgba(244,63,94,0.35)]'
                 : sheetAllOverdueCount > 0
-                ? 'bg-gradient-to-br from-rose-950/70 via-rose-950/40 to-slate-900/90 hover:from-rose-950/85 border-rose-500/60 hover:border-rose-400 shadow-md hover:shadow-xl hover:shadow-rose-500/25'
+                ? 'bg-gradient-to-br from-rose-950/75 via-rose-950/35 to-slate-900/90 hover:from-rose-950/90 border-rose-500/60 hover:border-rose-400 shadow-md hover:shadow-[0_12px_28px_rgba(244,63,94,0.3)]'
                 : 'bg-gradient-to-br from-slate-900/80 via-slate-900/50 to-slate-950/90 border-slate-700/80 hover:border-slate-600 shadow-md'
             }`}
             title="Klik untuk membuka pop-up daftar No. Pesanan tertunda"
           >
             {/* Top highlight bar */}
-            <div className={`absolute top-0 left-0 right-0 h-1 ${sheetAllOverdueCount > 0 ? 'bg-gradient-to-r from-rose-500 to-red-400 shadow-[0_0_8px_rgba(244,63,94,0.6)]' : 'bg-slate-700'}`} />
+            <div className={`absolute top-0 left-0 right-0 h-1 ${sheetAllOverdueCount > 0 ? 'bg-gradient-to-r from-rose-500 via-red-400 to-pink-500 shadow-[0_0_10px_rgba(244,63,94,0.7)]' : 'bg-slate-700'}`} />
 
+            {/* Header: Title + Cute Agent Mascot */}
             <div className="flex items-center justify-between mb-2">
               <span className="text-rose-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <AlertTriangle className={`w-3.5 h-3.5 ${sheetAllOverdueCount > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-400'}`} />
                 Tertunda &gt;{formatThresholdLabel(delayThreshold)}
               </span>
               <div className="flex items-center gap-1.5">
-                <span
-                  className="px-2 py-0.5 bg-rose-500/25 text-rose-200 border border-rose-400/40 rounded-full text-[10px] font-black flex items-center gap-1 shadow-2xs"
-                  title="Monitoring akumulasi semua data Google Sheet agar pendingan tidak terlewat"
-                >
-                  <Info className="w-3 h-3 text-rose-300 shrink-0" />
-                  <span>Semua Data</span>
-                </span>
+                <CuteAgentAvatar
+                  expression="panic_sweat"
+                  size="sm"
+                  glowColor="rose"
+                  animation={sheetAllOverdueCount > 0 ? 'jitter' : 'none'}
+                  bubbleText={sheetAllOverdueCount > 0 ? 'Waduh telat!' : 'Aman!'}
+                />
                 {sheetAllOverdueCount > 0 && (
                   <span className="px-1.5 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.8)]">
-                    Perlu Cek!
+                    Cek!
                   </span>
                 )}
               </div>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className={`text-3xl sm:text-4xl font-mono font-black tracking-tight tabular-nums drop-shadow-[0_2px_8px_rgba(244,63,94,0.25)] ${sheetAllOverdueCount > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
+
+            {/* Metric Value */}
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className={`text-3xl sm:text-4xl font-mono font-black tracking-tight tabular-nums drop-shadow-[0_2px_10px_rgba(244,63,94,0.35)] ${
+                sheetAllOverdueCount > 0
+                  ? 'bg-gradient-to-r from-rose-400 via-red-300 to-pink-300 bg-clip-text text-transparent'
+                  : 'text-slate-300'
+              }`}>
                 {sheetLoading ? '...' : sheetAllOverdueCount}
               </span>
               <span className="text-xs text-slate-300 font-medium">Nota</span>
               {sheetTimeframe !== 'all' && (
-                <span className="text-[10px] font-bold text-rose-300/80 ml-auto bg-rose-950/80 px-2 py-0.5 rounded-md border border-rose-500/30">
+                <span className="text-[10px] font-bold text-rose-300 ml-auto bg-rose-950/80 px-2 py-0.5 rounded-lg border border-rose-500/40">
                   {sheetTimeframe === 'today'
                     ? 'Hari ini'
                     : sheetTimeframe === 'yesterday'
@@ -1225,6 +1364,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                 </span>
               )}
             </div>
+
             {/* Tanda Informasi Pendingan Semua Data */}
             <div className="mt-2.5 pt-2 border-t border-rose-500/25 flex flex-col gap-0.5">
               <div className="flex items-center justify-between text-[11px] text-rose-200">
@@ -1233,7 +1373,7 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                   <span>Akumulasi Pendingan</span>
                 </span>
                 <span className="text-[10px] underline font-bold group-hover:translate-x-0.5 transition-transform text-rose-300">
-                  Daftar No Pesanan →
+                  Daftar Pesanan →
                 </span>
               </div>
               <p className="text-[10px] text-rose-300/80 leading-tight">
@@ -1242,22 +1382,23 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
             </div>
           </div>
 
-          {/* Card 4: TOTAL NOTA SESUAI PERIODE */}
+          {/* Card 4: TOTAL NOTA SESUAI PERIODE (Cyber Indigo & Electric Violet) */}
           <div
             id="card-sheet-total"
             onClick={() => handleCardClick('all')}
             className={`p-4 sm:p-5 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden group hover:-translate-y-1.5 ${
               sheetStatusFilter === 'all'
-                ? 'bg-gradient-to-br from-indigo-950/90 via-indigo-950/60 to-slate-900 border-indigo-400 ring-2 ring-indigo-400/50 shadow-xl shadow-indigo-500/25'
-                : 'bg-gradient-to-br from-indigo-950/50 via-indigo-950/25 to-slate-900/90 hover:from-indigo-950/70 border-indigo-500/40 hover:border-indigo-400/80 shadow-md hover:shadow-xl hover:shadow-indigo-500/20'
+                ? 'bg-gradient-to-br from-indigo-950/90 via-indigo-900/40 to-slate-900 border-indigo-400 ring-2 ring-indigo-400/60 shadow-[0_12px_30px_rgba(99,102,241,0.35)]'
+                : 'bg-gradient-to-br from-indigo-950/60 via-indigo-950/30 to-slate-900/90 hover:from-indigo-950/80 border-indigo-500/40 hover:border-indigo-400 shadow-md hover:shadow-[0_12px_28px_rgba(99,102,241,0.25)]'
             }`}
             title="Klik untuk membuka pop-up daftar seluruh No. Pesanan pada periode ini"
           >
             {/* Top highlight bar */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-sky-400 to-indigo-300 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-400 via-sky-300 to-purple-400 shadow-[0_0_10px_rgba(99,102,241,0.6)]" />
 
+            {/* Header: Title + Cute Agent Mascot */}
             <div className="flex items-center justify-between mb-2">
-              <span className="text-slate-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <span className="text-indigo-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-indigo-400" />
                 {sheetTimeframe === 'today'
                   ? 'Total Harian'
@@ -1269,28 +1410,48 @@ export const BerandaSection: React.FC<BerandaSectionProps> = ({
                   ? 'Total Bulanan'
                   : 'Total di Sheet'}
               </span>
-              <span className="px-2 py-0.5 bg-slate-800/90 text-indigo-200 border border-indigo-400/30 rounded-full text-[10px] font-bold shadow-2xs">
-                {sheetTimeframe === 'today'
-                  ? 'Hari Ini'
-                  : sheetTimeframe === 'yesterday'
-                  ? 'Kemarin'
-                  : sheetTimeframe === 'week'
-                  ? 'Minggu Ini'
-                  : sheetTimeframe === 'month'
-                  ? 'Bulan Ini'
-                  : 'Semua'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <CuteAgentAvatar
+                  expression="eating_popcorn"
+                  size="sm"
+                  glowColor="indigo"
+                  animation="pulse"
+                  bubbleText="Pantau data~"
+                />
+                <span className="px-2 py-0.5 bg-slate-800/90 text-indigo-200 border border-indigo-400/30 rounded-full text-[10px] font-bold shadow-2xs">
+                  {sheetTimeframe === 'today'
+                    ? 'Hari Ini'
+                    : sheetTimeframe === 'yesterday'
+                    ? 'Kemarin'
+                    : sheetTimeframe === 'week'
+                    ? 'Minggu Ini'
+                    : sheetTimeframe === 'month'
+                    ? 'Bulan Ini'
+                    : 'Semua'}
+                </span>
+              </div>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl sm:text-4xl font-mono font-black text-white tracking-tight tabular-nums drop-shadow-[0_2px_8px_rgba(255,255,255,0.2)]">
+
+            {/* Metric Value */}
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-3xl sm:text-4xl font-mono font-black bg-gradient-to-r from-white via-indigo-100 to-slate-200 bg-clip-text text-transparent tracking-tight tabular-nums drop-shadow-[0_2px_10px_rgba(255,255,255,0.25)]">
                 {sheetLoading ? '...' : sheetTotalCount}
               </span>
               <span className="text-xs text-slate-300 font-semibold">Nota</span>
             </div>
-            <p className="text-[11px] text-slate-300 mt-2.5 pt-2 border-t border-indigo-500/20 flex items-center justify-between">
-              <span className="text-indigo-200/90 font-medium">Shopee: <strong className="text-white">{sheetShopeeCount}</strong> • Tokped: <strong className="text-white">{sheetTokpedCount}</strong></span>
+
+            {/* Card Footer: Shopee vs Tokopedia */}
+            <p className="text-[11px] text-slate-300 mt-2.5 pt-2 border-t border-indigo-500/25 flex items-center justify-between">
+              <span className="text-indigo-200/95 font-medium flex items-center gap-1.5">
+                <span className="px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30 text-[10px]">
+                  Shopee: <strong className="text-white font-mono">{sheetShopeeCount}</strong>
+                </span>
+                <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px]">
+                  Tokped: <strong className="text-white font-mono">{sheetTokpedCount}</strong>
+                </span>
+              </span>
               <span className="text-[10px] underline font-bold group-hover:translate-x-1 transition-transform text-indigo-300">
-                Daftar No Pesanan →
+                Daftar Pesanan →
               </span>
             </p>
           </div>
