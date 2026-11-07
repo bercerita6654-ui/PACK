@@ -35,6 +35,8 @@ import {
   appendDailyRekapRow,
   appendPackingOrders,
   appendProcessedNotas,
+  updateNotaStatusInSpreadsheet,
+  clearSheetDataCache,
   markOrdersAsPackedInSpreadsheet,
   markOrdersAsUnpackedInSpreadsheet,
 } from './services/googleWorkspace';
@@ -1501,24 +1503,69 @@ export default function App() {
             setSyncProgress((prev) => (prev ? { ...prev, ...p } : null));
           };
 
+          const packedOrdersSnapshot = [...packedOrders];
           let saveResult;
+          let notaUpdatedCount = 0;
           try {
             saveResult = await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab, onProgress);
+
+            // Sinkronkan juga status ke lembar Nota Diproses agar status di Google Sheet berubah menjadi 'Selesai Packing'
+            try {
+              notaUpdatedCount = await updateNotaStatusInSpreadsheet(
+                activeToken,
+                targetSpreadsheetId,
+                packedOrdersSnapshot,
+                TARGET_NOTA_SHEET_TAB
+              );
+            } catch (notaErr) {
+              console.warn('Gagal memperbarui status di tab Nota Diproses:', notaErr);
+            }
           } catch (initialErr: any) {
             if (isAuthExpiredError(initialErr)) {
               showToast('Memperbarui token akses Google...', 'info');
               activeToken = await refreshGoogleToken();
               setAccessToken(activeToken);
               saveResult = await appendPackingOrders(activeToken, targetSpreadsheetId, rows, targetTab, onProgress);
+              try {
+                notaUpdatedCount = await updateNotaStatusInSpreadsheet(
+                  activeToken,
+                  targetSpreadsheetId,
+                  packedOrdersSnapshot,
+                  TARGET_NOTA_SHEET_TAB
+                );
+              } catch (notaErr) {
+                console.warn('Gagal memperbarui status di tab Nota Diproses:', notaErr);
+              }
             } else {
               throw initialErr;
             }
           }
 
-          const countToAnnounce = saveResult.added > 0 ? saveResult.added : packedOrders.length;
+          const countToAnnounce = saveResult.added > 0 ? saveResult.added : packedOrdersSnapshot.length;
+
+          // Tandai juga nota lokal processedNotas yang cocok sebagai selesai packing
+          const packedSet = new Set(packedOrdersSnapshot.map((p) => p.orderNumber.toUpperCase()));
+          const packedNormSet = new Set(packedOrdersSnapshot.map((p) => normalizeOrderNumber(p.orderNumber)).filter(Boolean));
+          setProcessedNotas((prev) =>
+            prev.map((nota) => {
+              const u = nota.orderNumber.toUpperCase();
+              const n = normalizeOrderNumber(nota.orderNumber);
+              if (packedSet.has(u) || (n && packedNormSet.has(n))) {
+                return {
+                  ...nota,
+                  isPacked: true,
+                  packedAt: nota.packedAt || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                };
+              }
+              return nota;
+            })
+          );
 
           // Otomatis reset data packing paket setelah klik simpan ke Google Sheet
           handleClearPackedOrders();
+
+          // Hapus cache Google Sheet agar pembacaan berikutnya langsung segar
+          clearSheetDataCache(targetSpreadsheetId);
 
           // Suara jumlah nota otomatis saat berhasil klik simpan Scan Nota (Sudah Packing)
           if (countToAnnounce > 0) {
@@ -1526,9 +1573,10 @@ export default function App() {
           }
 
           // Berikan notifikasi akurat mengenai hasil simpan & duplikasi
+          const notaSyncInfo = notaUpdatedCount > 0 ? ` & ${notaUpdatedCount} status di "${TARGET_NOTA_SHEET_TAB}" diperbarui` : '';
           if (saveResult.added > 0 && saveResult.skippedDuplicates === 0) {
             showToast(
-              `Semua ${saveResult.added} nomor resi/pesanan berhasil diunggah ke sheet "${saveResult.targetSheet}". Data sesi scan packing telah otomatis direset.`,
+              `Semua ${saveResult.added} nomor resi/pesanan berhasil diunggah ke sheet "${saveResult.targetSheet}"${notaSyncInfo}. Data sesi scan packing telah otomatis direset.`,
               'success',
               {
                 title: 'Sinkronisasi Packing Berhasil',
@@ -1539,7 +1587,7 @@ export default function App() {
             );
           } else if (saveResult.added > 0 && saveResult.skippedDuplicates > 0) {
             showToast(
-              `${saveResult.added} nomor resi baru berhasil disimpan ke Google Sheet. Sebanyak ${saveResult.skippedDuplicates} pesanan dilewati karena sudah ada di sheet "${saveResult.targetSheet}" (mencegah duplikat). Data packing telah direset.`,
+              `${saveResult.added} nomor resi baru berhasil disimpan ke Google Sheet${notaSyncInfo}. Sebanyak ${saveResult.skippedDuplicates} pesanan dilewati karena sudah ada di sheet "${saveResult.targetSheet}" (mencegah duplikat). Data packing telah direset.`,
               'success',
               {
                 title: 'Sinkronisasi Packing Selesai',
@@ -1550,7 +1598,7 @@ export default function App() {
             );
           } else {
             showToast(
-              `Semua ${saveResult.skippedDuplicates} nomor pesanan sudah pernah tersimpan sebelumnya di sheet "${saveResult.targetSheet}". Tidak ada baris baru yang diunggah. Data packing telah direset.`,
+              `Data ${saveResult.skippedDuplicates} nomor pesanan sudah tercatat di sheet "${saveResult.targetSheet}"${notaSyncInfo}. Data packing telah direset.`,
               'info',
               {
                 title: 'Data Sudah Tersimpan',
@@ -1561,7 +1609,9 @@ export default function App() {
             );
           }
 
-          setLastPackingSyncTime(Date.now());
+          const syncTimestamp = Date.now();
+          setLastPackingSyncTime(syncTimestamp);
+          setLastNotaSyncTime(syncTimestamp);
         } catch (err: any) {
           console.error('Error saving packed orders:', err);
           setSyncProgress((prev) =>
@@ -1717,7 +1767,10 @@ export default function App() {
             );
           }
 
-          setLastNotaSyncTime(Date.now());
+          clearSheetDataCache(targetSpreadsheetId);
+          const syncTimestamp = Date.now();
+          setLastNotaSyncTime(syncTimestamp);
+          setLastPackingSyncTime(syncTimestamp);
         } catch (err: any) {
           console.error('Error saving processed notas:', err);
           setSyncProgress((prev) =>
@@ -1938,7 +1991,7 @@ export default function App() {
                 onTokenExpired={handleTokenExpired}
                 targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
                 targetSheetTab={TARGET_PACKING_SHEET_TAB}
-                lastSyncTimestamp={lastPackingSyncTime}
+                lastSyncTimestamp={Math.max(lastPackingSyncTime, lastNotaSyncTime)}
                 processedNotas={processedNotas}
                 delayThreshold={delayThreshold}
                 onNavigateToNotas={() => setActiveTab('nota')}
@@ -1974,7 +2027,7 @@ export default function App() {
                 onTokenExpired={handleTokenExpired}
                 targetSpreadsheetId={TARGET_PACKING_SPREADSHEET_ID}
                 targetSheetTab={TARGET_NOTA_SHEET_TAB}
-                lastSyncTimestamp={lastNotaSyncTime}
+                lastSyncTimestamp={Math.max(lastPackingSyncTime, lastNotaSyncTime)}
                 onNavigateToPacking={() => setActiveTab('packing')}
                 onNavigateToSheetHistory={() => setActiveTab('sheet_history')}
                 onNavigateToBeranda={() => setActiveTab('beranda')}

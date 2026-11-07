@@ -431,7 +431,7 @@ export async function appendPackingOrders(
   // Read existing rows to check for duplicate order numbers and calculate sequential numbering
   let existingValues: any[][] = [];
   try {
-    existingValues = await fetchSheetValues(accessToken, spreadsheetId, `'${targetSheet}'!A1:Z5000`);
+    existingValues = await fetchSheetValues(accessToken, spreadsheetId, `'${targetSheet}'!A1:Z10000`);
   } catch (e: any) {
     if (isAuthExpiredError(e)) throw e;
     console.warn('Could not read existing sheet rows for duplicate check:', e);
@@ -729,7 +729,7 @@ export async function fetchPackingRegHistory(
 ): Promise<{ tabName: string; rows: string[][]; headers: string[] }> {
   try {
     // Attempt 1: Fetch directly with targetTabName
-    const range = `'${targetTabName}'!A1:Z2000`;
+    const range = `'${targetTabName}'!A1:Z10000`;
     const values = await fetchSheetValues(accessToken, spreadsheetId, range);
     if (values && values.length > 0) {
       const headers = (values[0] || []).map((h: any) => String(h || ''));
@@ -758,7 +758,7 @@ export async function fetchPackingRegHistory(
     details.sheets[0]?.title ||
     targetTabName;
 
-  const range = `'${matchedTab}'!A1:Z2000`;
+  const range = `'${matchedTab}'!A1:Z10000`;
   const values = await fetchSheetValues(accessToken, spreadsheetId, range);
 
   const headers = values.length > 0 ? values[0].map((h: any) => String(h || '')) : [];
@@ -777,7 +777,7 @@ export async function fetchProcessedNotasHistory(
 ): Promise<{ tabName: string; rows: string[][]; headers: string[] }> {
   try {
     // Attempt 1: Fetch directly with targetTabName
-    const range = `'${targetTabName}'!A1:Z5000`;
+    const range = `'${targetTabName}'!A1:Z10000`;
     const values = await fetchSheetValues(accessToken, spreadsheetId, range);
     if (values && values.length > 0) {
       const headers = (values[0] || []).map((h: any) => String(h || ''));
@@ -805,7 +805,7 @@ export async function fetchProcessedNotasHistory(
     details.sheets[0]?.title ||
     targetTabName;
 
-  const range = `'${matchedTab}'!A1:Z5000`;
+  const range = `'${matchedTab}'!A1:Z10000`;
   const values = await fetchSheetValues(accessToken, spreadsheetId, range);
 
   const headers = values.length > 0 ? values[0].map((h: any) => String(h || '')) : [];
@@ -881,8 +881,8 @@ export async function fetchCrossReferencedNotasAndPacking(
 
   try {
     const batchResult = await fetchBatchSheetValues(accessToken, spreadsheetId, [
-      `'${matchedNotaTab}'!A1:Z5000`,
-      `'${matchedPackingTab}'!A1:Z2000`,
+      `'${matchedNotaTab}'!A1:Z10000`,
+      `'${matchedPackingTab}'!A1:Z10000`,
     ]);
 
     if (batchResult.length > 0 && batchResult[0].values.length > 0) {
@@ -1116,7 +1116,7 @@ export async function appendProcessedNotas(
   // Read existing rows to check for duplicate order numbers and calculate sequential numbering
   let existingValues: any[][] = [];
   try {
-    existingValues = await fetchSheetValues(accessToken, spreadsheetId, `'${targetSheet}'!A1:Z5000`);
+    existingValues = await fetchSheetValues(accessToken, spreadsheetId, `'${targetSheet}'!A1:Z10000`);
   } catch (e: any) {
     if (isAuthExpiredError(e)) throw e;
     console.warn('Could not read existing sheet rows for duplicate check:', e);
@@ -1261,6 +1261,182 @@ export async function appendProcessedNotas(
 }
 
 /**
+ * Converts a 0-indexed column number to Excel column letters (0 -> A, 1 -> B, 25 -> Z, 26 -> AA, etc.)
+ */
+export function columnToLetter(colIndex: number): string {
+  let temp = colIndex + 1;
+  let letter = '';
+  while (temp > 0) {
+    const mod = (temp - 1) % 26;
+    letter = String.fromCharCode(65 + mod) + letter;
+    temp = Math.floor((temp - mod) / 26);
+  }
+  return letter;
+}
+
+/**
+ * Update Status Packing & Waktu Packing in Nota Diproses tab for given orders
+ * Matches orders accurately using both exact uppercase and normalized representations.
+ * Dynamically resolves column letters for Order, Status Packing, and Waktu Packing.
+ */
+export async function updateNotaStatusInSpreadsheet(
+  accessToken: string,
+  spreadsheetId: string,
+  orders: { orderNumber: string; platform?: string; timestamp?: string; date?: string; rowNumber?: number }[],
+  notaTab: string = 'Nota Diproses'
+): Promise<number> {
+  if (!orders || orders.length === 0) return 0;
+
+  let matchedNotaTab = notaTab;
+  try {
+    const details = await getSpreadsheetDetails(accessToken, spreadsheetId);
+    if (details.sheets && details.sheets.length > 0) {
+      const foundNota =
+        details.sheets.find(
+          (s) => s.title.trim().toLowerCase() === notaTab.trim().toLowerCase()
+        )?.title ||
+        details.sheets.find(
+          (s) =>
+            s.title.toLowerCase().includes('nota diproses') ||
+            s.title.toLowerCase().includes('nota') ||
+            s.title.toLowerCase().includes('diproses')
+        )?.title;
+      if (foundNota) matchedNotaTab = foundNota;
+    }
+  } catch (err) {
+    console.warn('Could not resolve nota tab name from metadata:', err);
+  }
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  const orderNumberMap = new Map<string, { timestamp?: string; rowNumber?: number }>();
+  const orderNormMap = new Map<string, { timestamp?: string; rowNumber?: number }>();
+  orders.forEach((o) => {
+    const u = o.orderNumber.trim().toUpperCase();
+    const n = normalizeOrderNumber(o.orderNumber);
+    if (u) orderNumberMap.set(u, o);
+    if (n) orderNormMap.set(n, o);
+  });
+
+  try {
+    const notaValues = await fetchSheetValues(accessToken, spreadsheetId, `'${matchedNotaTab}'!A1:Z10000`, true);
+    if (!notaValues || notaValues.length <= 1) return 0;
+
+    const headers = notaValues[0] || [];
+    let colOrder = 1;
+    let colStatus = 5; // Default Col F (0-indexed 5)
+    let colPackTime = 6; // Default Col G (0-indexed 6)
+
+    headers.forEach((h: any, idx: number) => {
+      const lower = String(h || '').trim().toLowerCase();
+      if (
+        lower.includes('pesanan') ||
+        lower.includes('order') ||
+        lower.includes('nota') ||
+        lower.includes('resi') ||
+        lower.includes('barcode')
+      ) {
+        colOrder = idx;
+      } else if (
+        lower.includes('status packing') ||
+        lower.includes('status') ||
+        lower.includes('kondisi') ||
+        lower.includes('keterangan')
+      ) {
+        colStatus = idx;
+      } else if (
+        lower.includes('waktu packing') ||
+        lower.includes('jam packing') ||
+        lower.includes('waktu pack') ||
+        lower.includes('jam pack') ||
+        lower.includes('packed at') ||
+        lower.includes('tgl packing')
+      ) {
+        colPackTime = idx;
+      }
+    });
+
+    const statusColLetter = columnToLetter(colStatus);
+    const timeColLetter = columnToLetter(colPackTime);
+
+    const rowUpdates: { rowNumber: number; status: string; time: string }[] = [];
+
+    for (let rIdx = 1; rIdx < notaValues.length; rIdx++) {
+      const r = notaValues[rIdx];
+      if (!r || r.length === 0) continue;
+      const orderNo = String(r[colOrder] || '').trim().toUpperCase();
+      const orderNorm = normalizeOrderNumber(orderNo);
+
+      const matched = (orderNo && orderNumberMap.get(orderNo)) || (orderNorm && orderNormMap.get(orderNorm));
+      if (matched) {
+        const currentStatus = String(r[colStatus] || '').trim().toLowerCase();
+        // Update if not already marked finished
+        if (!currentStatus.includes('selesai')) {
+          rowUpdates.push({
+            rowNumber: rIdx + 1,
+            status: 'Selesai Packing',
+            time: matched.timestamp || timeStr,
+          });
+        }
+      }
+    }
+
+    if (rowUpdates.length === 0) return 0;
+
+    // Build batchUpdate data payload
+    const dataPayload: { range: string; values: any[][] }[] = [];
+    rowUpdates.forEach((u) => {
+      if (colPackTime === colStatus + 1) {
+        // Adjacent columns: single range (e.g. F2:G2)
+        dataPayload.push({
+          range: `'${matchedNotaTab}'!${statusColLetter}${u.rowNumber}:${timeColLetter}${u.rowNumber}`,
+          values: [[u.status, u.time]],
+        });
+      } else {
+        // Separate columns
+        dataPayload.push({
+          range: `'${matchedNotaTab}'!${statusColLetter}${u.rowNumber}`,
+          values: [[u.status]],
+        });
+        dataPayload.push({
+          range: `'${matchedNotaTab}'!${timeColLetter}${u.rowNumber}`,
+          values: [[u.time]],
+        });
+      }
+    });
+
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
+    const updateRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        valueInputOption: 'USER_ENTERED',
+        data: dataPayload,
+      }),
+    });
+
+    if (updateRes.ok) {
+      clearSheetDataCache(spreadsheetId);
+      return rowUpdates.length;
+    } else {
+      console.warn('Failed batch updating nota status:', await updateRes.text());
+      return 0;
+    }
+  } catch (err) {
+    console.warn('Could not update status in Nota Diproses tab:', err);
+    return 0;
+  }
+}
+
+/**
  * Mark orders as packed in Google Sheets (2-in-1 automatic sync):
  * 1. Appends packing entries to the packing sheet tab (e.g. "Packing Reg")
  * 2. Updates the Status Packing (Col F) & Waktu Packing (Col G) in the Nota Diproses tab automatically
@@ -1322,11 +1498,6 @@ export async function markOrdersAsPackedInSpreadsheet(
     second: '2-digit',
   });
 
-  const orderNumberMap = new Map<string, { platform: PlatformType; rowNumber?: number; adminDate?: string }>();
-  orders.forEach((o) => {
-    orderNumberMap.set(o.orderNumber.toUpperCase(), o);
-  });
-
   // 1. Task A: Append to Packing sheet tab (Packing Reg)
   const packingRows = orders.map((o, idx) => [
     idx + 1,
@@ -1352,70 +1523,12 @@ export async function markOrdersAsPackedInSpreadsheet(
   // 2. Task B: Update Status & Waktu Packing in Nota Diproses tab
   const updateNotaPromise = (async () => {
     try {
-      // If some orders don't have rowNumber, fetch the order column from Nota Diproses to resolve exact rows
-      const needsRowResolution = orders.some((o) => !o.rowNumber || o.rowNumber <= 1);
-      const rowUpdates: { rowNumber: number; status: string; time: string }[] = [];
-
-      if (needsRowResolution) {
-        const notaValues = await fetchSheetValues(accessToken, spreadsheetId, `'${matchedNotaTab}'!A1:G5000`);
-        if (notaValues && notaValues.length > 0) {
-          // Identify headers
-          const headers = notaValues[0] || [];
-          let colOrder = 1;
-          headers.forEach((h: any, idx: number) => {
-            const lower = String(h || '').toLowerCase();
-            if (lower.includes('pesanan') || lower.includes('order')) colOrder = idx;
-          });
-
-          for (let rIdx = 1; rIdx < notaValues.length; rIdx++) {
-            const r = notaValues[rIdx];
-            const orderNo = String(r[colOrder] || '').trim().toUpperCase();
-            if (orderNo && orderNumberMap.has(orderNo)) {
-              rowUpdates.push({
-                rowNumber: rIdx + 1,
-                status: 'Selesai Packing',
-                time: timeStr,
-              });
-            }
-          }
-        }
-      } else {
-        orders.forEach((o) => {
-          if (o.rowNumber && o.rowNumber > 1) {
-            rowUpdates.push({
-              rowNumber: o.rowNumber,
-              status: 'Selesai Packing',
-              time: timeStr,
-            });
-          }
-        });
-      }
-
-      if (rowUpdates.length > 0) {
-        const dataPayload = rowUpdates.map((u) => ({
-          range: `'${matchedNotaTab}'!F${u.rowNumber}:G${u.rowNumber}`,
-          values: [[u.status, u.time]],
-        }));
-
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
-        const updateRes = await fetch(url, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            valueInputOption: 'USER_ENTERED',
-            data: dataPayload,
-          }),
-        });
-
-        if (updateRes.ok) {
-          updatedInNota = rowUpdates.length;
-        } else {
-          console.warn('Failed batch updating nota status:', await updateRes.text());
-        }
-      }
+      updatedInNota = await updateNotaStatusInSpreadsheet(
+        accessToken,
+        spreadsheetId,
+        orders.map((o) => ({ orderNumber: o.orderNumber, platform: o.platform, timestamp: timeStr })),
+        matchedNotaTab
+      );
     } catch (err) {
       console.warn('Could not update status in Nota Diproses tab:', err);
     }

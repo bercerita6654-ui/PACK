@@ -525,12 +525,16 @@ export const ProcessedNotaSheetHistory: React.FC<ProcessedNotaSheetHistoryProps>
           localNotas,
           packingMap
         );
-        if (evalRes.isPacked !== r.isPacked || evalRes.resolvedStatus !== r.packingStatus) {
+        const finalIsPacked = evalRes.isPacked || r.isPacked;
+        const finalStatus = evalRes.isPacked ? evalRes.resolvedStatus : r.packingStatus;
+        const finalTime = evalRes.isPacked ? (evalRes.resolvedTime || r.packingTime) : r.packingTime;
+
+        if (finalIsPacked !== r.isPacked || finalStatus !== r.packingStatus) {
           return {
             ...r,
-            isPacked: evalRes.isPacked,
-            packingStatus: evalRes.resolvedStatus,
-            packingTime: evalRes.resolvedTime || r.packingTime,
+            isPacked: finalIsPacked,
+            packingStatus: finalStatus,
+            packingTime: finalTime,
             matchedFromPackingReg: evalRes.matchedSource === 'packing_reg_sheet' || r.matchedFromPackingReg,
             matchedSource: evalRes.matchedSource || r.matchedSource,
           };
