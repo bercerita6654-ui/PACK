@@ -754,7 +754,7 @@ export const PackingSection: React.FC<PackingSectionProps> = ({
     if (accessToken) {
       loadSheetData();
     }
-  }, [accessToken, loadSheetData]);
+  }, [accessToken, lastSyncTimestamp, loadSheetData]);
 
   // Reset 5-minute countdown on sync
   useEffect(() => {
